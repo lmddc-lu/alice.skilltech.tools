@@ -1,0 +1,198 @@
+<div class="moodle-courses-modal">
+  <div
+    class="modal-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="modal-title"
+    (click)="onOverlayClick($event)"
+  >
+    <div class="modal-container" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2 id="modal-title">Manage Moodle Courses</h2>
+        <button
+          type="button"
+          class="close-button"
+          aria-label="Close modal"
+          (click)="close.emit()"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      @if (loading()) {
+      <div
+        class="modal-body loading-state"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Loading courses...</p>
+      </div>
+      }
+
+      @if (error()) {
+      <div class="modal-body error-state" role="alert">
+        <p class="error-message">{{ error() }}</p>
+        <button type="button" class="retry-button" (click)="loadCourses()">
+          Retry
+        </button>
+      </div>
+      }
+
+      @if (!loading() && !error() && data()) {
+      <div class="modal-body">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button
+              type="button"
+              class="toolbar-button"
+              (click)="loadCourses()"
+              [disabled]="loading()"
+              aria-label="Refresh courses"
+            >
+              <img
+                src="/icons/refresh2.svg"
+                alt=""
+                width="16"
+                height="16"
+              />
+              <span>Refresh</span>
+            </button>
+            <div class="all">
+              <input
+                class="st2"
+                type="checkbox"
+                id="select-all-courses"
+                [checked]="allSelected()"
+                (change)="toggleSelectAll()"
+              />
+              <label for="select-all-courses">
+                Select all
+              </label>
+            </div>
+          </div>
+
+          <div class="toolbar-right">
+            <span class="selection-count" role="status" aria-live="polite">
+              {{ selectedCourses().size }} of
+              {{ allCourses().length }} selected
+            </span>
+          </div>
+        </div>
+
+        <div class="search-container">
+          <div class="search-input-wrapper">
+            <svg
+              class="search-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            <input
+              id="course-search"
+              type="search"
+              class="search-input"
+              placeholder="Search courses..."
+              [value]="searchQuery()"
+              (input)="searchQuery.set($any($event.target).value)"
+              aria-label="Search courses"
+            />
+          </div>
+        </div>
+
+        <div class="courses-grid" role="list">
+          @if (filteredCourses().length === 0) {
+          <div class="empty-state">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path
+                d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
+              />
+            </svg>
+            <p class="empty-title">No courses found</p>
+            <p class="empty-description">
+              Try adjusting your search or refresh the list
+            </p>
+          </div>
+          } @else { @for (course of filteredCourses(); track
+          course.selection_key) {
+          <label class="course-card" role="listitem">
+            <input
+              type="checkbox"
+              class="course-checkbox"
+              [checked]="selectedCourses().has(course.selection_key)"
+              (change)="toggleCourse(course.selection_key)"
+              [attr.aria-label]="'Select ' + course.course_name"
+            />
+            <div class="course-content">
+              <div class="course-header">
+                <h3 class="course-name">{{ course.course_name }}</h3>
+              </div>
+
+              @if (course.description) {
+              <p class="course-description" [innerHTML]="course.description"></p>
+              }
+
+              <div class="course-tags">
+                <span class="course-category">{{ course.category }}</span>
+                @if (course.total_files > 0) {
+                <span class="course-files">{{ course.total_files }} files</span>
+                }
+              </div>
+            </div>
+          </label>
+          } }
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="button button-secondary"
+          (click)="close.emit()"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="button button-primary"
+          [disabled]="saving() || !hasChanges()"
+          (click)="saveChanges()"
+        >
+          @if (saving()) {
+          <span class="button-spinner" aria-hidden="true"></span>
+          <span>Saving...</span>
+          } @else {
+          <span>Save Changes</span>
+          }
+        </button>
+      </div>
+      }
+    </div>
+  </div>
+</div>

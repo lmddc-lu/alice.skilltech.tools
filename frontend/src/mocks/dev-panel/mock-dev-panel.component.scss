@@ -1,0 +1,132 @@
+.mock-dev-panel {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  width: 320px;
+  max-height: 80vh;
+  background: #1e1e2a;
+  color: #e6e6ef;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  border: 1px solid #303044;
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  &.collapsed {
+    height: auto;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    background: #2a2a3c;
+    cursor: pointer;
+    user-select: none;
+
+    .title {
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .hint {
+      font-size: 10px;
+      color: #8a8a9e;
+      margin-right: 8px;
+    }
+
+    .collapse-btn {
+      background: transparent;
+      border: none;
+      color: #e6e6ef;
+      cursor: pointer;
+      font-size: 12px;
+    }
+  }
+
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    background: #252536;
+    border-bottom: 1px solid #303044;
+
+    button {
+      flex: 1 1 auto;
+      padding: 6px 8px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #b4b4c8;
+      cursor: pointer;
+      font-size: 11px;
+
+      &.active {
+        color: #ffffff;
+        border-bottom-color: #6c5ce7;
+      }
+
+      &:hover {
+        background: #2f2f44;
+      }
+    }
+  }
+
+  .body {
+    padding: 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    label {
+      font-size: 11px;
+      color: #b4b4c8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    select,
+    input[type='range'],
+    input[type='text'] {
+      background: #2a2a3c;
+      color: #e6e6ef;
+      border: 1px solid #3a3a50;
+      border-radius: 4px;
+      padding: 4px 6px;
+      font-size: 12px;
+    }
+
+    button {
+      background: #6c5ce7;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+
+      &:hover {
+        background: #5d4de0;
+      }
+    }
+
+    .radios {
+      display: flex;
+      gap: 10px;
+      label {
+        cursor: pointer;
+      }
+    }
+  }
+}

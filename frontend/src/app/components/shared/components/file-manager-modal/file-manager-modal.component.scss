@@ -1,0 +1,140 @@
+.add-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.parsed-content-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: inherit;
+}
+
+.parsed-content-panel {
+  background: var(--surface-color, #fff);
+  border-radius: 12px;
+  width: 90%;
+  height: 85%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.parsed-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  flex-shrink: 0;
+
+  .parsed-content-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+
+    h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chunk-info {
+      font-size: 0.8rem;
+      color: var(--text-secondary, #6b7280);
+      background: var(--surface-secondary, #f3f4f6);
+      padding: 2px 8px;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+  }
+
+  .close-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: var(--text-secondary, #6b7280);
+    border-radius: 4px;
+    flex-shrink: 0;
+
+    &:hover {
+      color: var(--text-primary, #111827);
+      background: var(--surface-secondary, #f3f4f6);
+    }
+  }
+}
+
+.parsed-content-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  min-height: 0;
+
+  .loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 12px;
+    color: var(--text-secondary, #6b7280);
+  }
+
+  .parsed-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-primary, #111827);
+  }
+
+  .parse-error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 32px;
+    text-align: center;
+    color: var(--text-secondary, #6b7280);
+
+    h4 {
+      margin: 0 0 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-primary, #111827);
+    }
+
+    .parse-error-description {
+      margin: 0 0 20px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      max-width: 440px;
+    }
+
+    .parse-error-reasons {
+      list-style: disc;
+      text-align: left;
+      margin: 0;
+      padding-left: 20px;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      max-width: 440px;
+
+      li {
+        color: var(--text-secondary, #6b7280);
+      }
+    }
+  }
+}

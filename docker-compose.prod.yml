@@ -1,0 +1,199 @@
+services:
+  db:
+    container_name: pg_db_echt
+    image: postgres:17
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
+      - POSTGRES_USER=${POSTGRES_USER?Variable not set}
+      - POSTGRES_DB=${POSTGRES_DB?Variable not set}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    volumes:
+      - postgres_data_v17:/var/lib/postgresql/data
+    networks:
+      - api_net
+
+  prestart:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    networks:
+      - api_net
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+    command: bash scripts/prestart.sh
+    env_file:
+      - .env
+    environment:
+      - SECRET_KEY=${SECRET_KEY?Variable not set}
+      - POSTGRES_SERVER=db
+      - POSTGRES_USER=${POSTGRES_USER?Variable not set}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
+
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:4.2.1-management
+    restart: unless-stopped
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq 
+    ports:
+      - "5672:5672"    # RabbitMQ
+      - "15672:15672"  # RabbitMQ Management
+      - "15692:15692"  # RabbitMQ Prometheus metrics 
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 7200000
+    networks:
+      - api_net
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  api-prod:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: alice_api
+    restart: unless-stopped
+    volumes:
+      - datasources:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      prestart:
+        condition: service_completed_successfully
+    env_file: .env
+    environment:
+      - POSTGRES_SERVER=db
+      - POSTGRES_USER=${POSTGRES_USER?Variable not set}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID?Variable not set}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET?Variable not set}
+      - OAUTH_SCOPES=${OAUTH_SCOPES?Variable not set}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "${EXTRA_HOST_1:-placeholder-1.invalid:127.0.0.1}"
+      - "${EXTRA_HOST_2:-placeholder-2.invalid:127.0.0.1}"
+    networks:
+      - api_net
+    ports:
+      - 8080:8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/utils/health-check/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker-1: &worker-base
+    build:
+      context: ./sync/worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - MINIO_URL=${MINIO_URL}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - BUCKET_NAME=${MINIO_BUCKET_NAME:-alice}
+      - MOODLE_ALLOWED_DOMAINS=${MOODLE_ALLOWED_DOMAINS:-}
+      - MOODLE_ALLOWED_NETWORKS=${MOODLE_ALLOWED_NETWORKS:-}
+      - WORKER_METRICS_PORT=9100
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "${EXTRA_HOST_1:-placeholder-1.invalid:127.0.0.1}"
+      - "${EXTRA_HOST_2:-placeholder-2.invalid:127.0.0.1}"
+    networks:
+      - api_net
+    ports:
+      - "9101:9100"
+
+  worker-2:
+    <<: *worker-base
+    ports:
+      - "9102:9100"
+
+  worker-3:
+    <<: *worker-base
+    ports:
+      - "9103:9100"
+
+  frontend-prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "80:80"
+    networks:
+      - api_net
+    depends_on:
+      api-prod:
+        condition: service_healthy
+
+  adminer:
+    image: adminer
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      - ADMINER_DESIGN=pepa-linha-dark
+    networks:
+      - api_net
+    ports:
+      - 8090:8080
+
+  garage:
+    container_name: garage-echt
+    image: dxflrs/garage:v2.1.0
+    restart: unless-stopped
+    volumes:
+      - ./.garage_conf/garage.toml:/etc/garage.toml
+      - ./.garage_conf/meta:/var/lib/garage/meta
+      - ./.garage_conf/data:/var/lib/garage/data
+    ports:
+     - 3900:3900
+     - 3901:3901
+     - 3902:3902
+     - 3903:3903
+    networks:
+     - api_net
+
+  garage-webui:
+    image: khairul169/garage-webui:latest
+    container_name: garage-webui-echt
+    restart: unless-stopped
+    volumes:
+      - ./.garage_conf/garage.toml:/etc/garage.toml:ro
+    ports:
+      - 3909:3909
+    environment:
+      API_BASE_URL: "http://garage:3903"
+      S3_ENDPOINT_URL: "http://garage:3900"
+    networks:
+      - api_net
+
+volumes:
+  postgres_data_v17:
+  datasources:
+  rabbitmq_data:
+
+networks:
+  api_net:

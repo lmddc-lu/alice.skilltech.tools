@@ -1,0 +1,12 @@
+{
+  "/local/oauth": {
+    "target": "https://moodle.skilltech.dev",
+    "secure": true,
+    "changeOrigin": true
+  },
+  "/api/": {
+    "target": "http://api-dev:8000",
+    "secure": false,
+    "changeOrigin": true
+  }
+}

@@ -1,0 +1,11 @@
+.git
+.gitignore
+.vscode
+__pycache__
+*.md
+*.env*
+*.png
+*.json
+docker-compose*.yml
+restart.sh
+test.sh

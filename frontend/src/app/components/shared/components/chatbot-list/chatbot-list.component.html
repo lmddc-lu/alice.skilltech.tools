@@ -1,0 +1,73 @@
+<div class="chatbot-list">
+  <div class="row">
+    <img src="/icons/icon_chatbot2.svg" alt="" width="21" height="21" />
+    <h2>{{ "overview.overview-title2" | translate }}</h2>
+  </div>
+
+  @if(loading()) {
+  <div class="loading-container">
+    <div class="loading-spinner"></div>
+    <p>{{ "chatbots.loadingChatbots" | translate }}</p>
+  </div>
+  } @else if (chatbots().length == 0) {
+  <div class="chatbot-empty-state">
+    <div class="empty-state-content">
+      <p class="empty-state-title">{{ "chatbots.noChatbots" | translate }}</p>
+      <p class="empty-state-description">
+        {{ "chatbots.createFirst" | translate }}
+      </p>
+    </div>
+  </div>
+  } @else if(!loading()) {
+  <div class="chatbot-grid">
+    @for(cb of chatbots(); track cb.id) {
+    <div class="chatbot-card">
+      <div class="chatbot-card-header">
+        <h3 class="chatbot-card-title">{{ cb.name }}</h3>
+        <span class="status-badge"
+          [class.status-ready]="cb.status === ChatbotStatus.READY"
+          [class.status-syncing]="cb.status === ChatbotStatus.PROCESSING"
+          [class.status-error]="cb.status === ChatbotStatus.ERROR"
+        >
+          @if (cb.status === ChatbotStatus.PROCESSING) {
+            <div class="loading-spinner small"></div>
+          }
+          {{ 'editChatbot.status' + (cb.status === ChatbotStatus.READY ? 'Ready' : cb.status === ChatbotStatus.PROCESSING ? 'Processing' : 'Error') | translate }}
+        </span>
+      </div>
+      <div class="chatbot-card-content">
+        <p class="chatbot-description">{{ cb.description }}</p>
+        <div class="chatbot-row">
+          <div class="chatbot-card-meta">
+            <span class="meta-label"
+              >{{ "chatbots.lastUpdated" | translate }}:</span
+            >
+            <span class="meta-value">{{
+              cb.updated_at | date : "dd MMM yyyy 'à' H'h'mm"
+            }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chatbot-card-actions">
+        <button
+          class="btn btn-secondary btn-md"
+          [routerLink]="['/dashboard/edit/', cb.id]"
+          type="button"
+        >
+          {{ "chatbots.edit" | translate }}
+        </button>
+        <a
+          [href]="'/chat/' + cb.id"
+          target="_blank"
+          class="btn btn-md btn-primary see"
+          type="button"
+        >
+          {{ "chatbots.view" | translate }}
+        </a>
+      </div>
+    </div>
+    }
+  </div>
+  }
+</div>

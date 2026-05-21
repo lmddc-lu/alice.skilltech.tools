@@ -1,0 +1,19 @@
+<div class="create_chatbot">
+  <h1>{{ "overview.overview-title1" | translate }} <br /><span>{{
+      user_name()
+    }}!</span></h1>
+  @if (showEmptyState()) {
+    <p>
+      <span>{{ "overview.noChatbotsYet" | translate }}</span
+      ><br />{{ "overview.helpYouCreate" | translate }}
+    </p>
+  }
+  <button
+    class="add"
+    [routerLink]="['/dashboard/new']"
+    [innerHTML]="'chatbots.addNew' | translate"
+  ></button>
+</div>
+<div class="overview">
+  <app-chatbot-list></app-chatbot-list>
+</div>

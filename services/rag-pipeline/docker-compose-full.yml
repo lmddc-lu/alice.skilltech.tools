@@ -1,0 +1,150 @@
+services:
+  qdrant:
+      image: qdrant/qdrant:v1.17
+      restart: unless-stopped
+      container_name: qdrant-haystack
+      ports:
+        - 6363:6333
+        - 6364:6334
+      expose:
+        - 6333
+        - 6334
+        - 6335
+      configs:
+        - source: qdrant_config
+          target: /qdrant/config/production.yaml
+      volumes:
+        - qdrant_data:/qdrant/storage
+      ulimits:
+        nofile:
+          soft: 65536
+          hard: 65536
+
+
+  redis:
+    image: redis:8-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+     - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+
+
+  docling:
+    image: ghcr.io/docling-project/docling-serve:v1.17.0
+    container_name: docling
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - DOCLING_SERVE_CONCURRENCY=${DOCLING_SERVE_CONCURRENCY:-1}
+      - DOCLING_SERVE_ENABLE_UI=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+
+  hayhooks-inference:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hayhooks-inference
+    ports:
+      - "1416:1416"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - SESSION_TTL=${SESSION_TTL:-3600}
+      - ENABLE_SESSION_STORAGE=${ENABLE_SESSION_STORAGE:-true}
+      - HAYSTACK_PIPELINE_BREAKPOINT_ENABLED=false
+      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://docling:5001}
+      - DOCLING_SERVE_API_KEY=${DOCLING_SERVE_API_KEY}
+      - DOCLING_SERVE_TIMEOUT=${DOCLING_SERVE_TIMEOUT}
+      - DOCLING_OCR_ENGINE=${DOCLING_OCR_ENGINE}
+      - DOCLING_OCR_LANG=${DOCLING_OCR_LANG}
+      - DOCLING_PDF_BACKEND=${DOCLING_PDF_BACKEND}
+      - DOCLING_TABLE_MODE=${DOCLING_TABLE_MODE}
+      - DOCLING_DOCUMENT_TIMEOUT=${DOCLING_DOCUMENT_TIMEOUT}
+      - LLM_API_BASE=${LLM_API_BASE}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - GENERATION_MODEL_ID=${GENERATION_MODEL_ID}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
+      - LLM_TOP_P=${LLM_TOP_P}
+      - LLM_TOP_K=${LLM_TOP_K}
+      - LLM_ENABLE_THINKING=${LLM_ENABLE_THINKING}
+      - EMBED_API_BASE=${EMBED_API_BASE}
+      - EMBED_API_KEY=${EMBED_API_KEY}
+      - EMBED_MODEL=${EMBED_MODEL}
+      - HAYHOOKS_CHAINLIT_ENABLED=true
+    depends_on:
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_started
+      docling:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:1416/status | grep -q rag_query"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  hayhooks-ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hayhooks-ingestion
+    ports:
+      - "1417:1416"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - SESSION_TTL=${SESSION_TTL:-3600}
+      - ENABLE_SESSION_STORAGE=${ENABLE_SESSION_STORAGE:-true}
+      - HAYSTACK_PIPELINE_BREAKPOINT_ENABLED=false
+      - DOCLING_SERVE_URL=${DOCLING_SERVE_URL:-http://docling:5001}
+      - DOCLING_SERVE_API_KEY=${DOCLING_SERVE_API_KEY}
+      - DOCLING_SERVE_TIMEOUT=${DOCLING_SERVE_TIMEOUT}
+      - DOCLING_OCR_ENGINE=${DOCLING_OCR_ENGINE}
+      - DOCLING_OCR_LANG=${DOCLING_OCR_LANG}
+      - DOCLING_PDF_BACKEND=${DOCLING_PDF_BACKEND}
+      - DOCLING_TABLE_MODE=${DOCLING_TABLE_MODE}
+      - DOCLING_DOCUMENT_TIMEOUT=${DOCLING_DOCUMENT_TIMEOUT}
+      - LLM_API_BASE=${LLM_API_BASE}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - GENERATION_MODEL_ID=${GENERATION_MODEL_ID}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
+      - LLM_TOP_P=${LLM_TOP_P}
+      - LLM_TOP_K=${LLM_TOP_K}
+      - LLM_ENABLE_THINKING=${LLM_ENABLE_THINKING}
+      - EMBED_API_BASE=${EMBED_API_BASE}
+      - EMBED_API_KEY=${EMBED_API_KEY}
+      - EMBED_MODEL=${EMBED_MODEL}
+    depends_on:
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_started
+      docling:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:1416/status | grep -q document_ingestion"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  redis_data:
+
+configs:
+  qdrant_config:
+    content: |
+      log_level: INFO

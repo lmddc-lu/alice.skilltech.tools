@@ -1,0 +1,11 @@
+<app-content-browser
+  [isOpen]="isOpen()"
+  [title]="'moodleContentBrowser.title' | translate"
+  [treeNodes]="treeNodes()"
+  [preview]="preview()"
+  [loadingStructure]="loadingStructure()"
+  [emptyIcon]="'/icons/book-open.svg'"
+  [emptyText]="'moodleContentBrowser.noCourses' | translate"
+  (close)="close.emit()"
+  (nodeClick)="onNodeClick($event)"
+/>

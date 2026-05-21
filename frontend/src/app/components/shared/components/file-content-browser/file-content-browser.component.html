@@ -1,0 +1,10 @@
+<app-content-browser
+  [isOpen]="isOpen()"
+  [title]="'fileContentBrowser.title' | translate"
+  [treeNodes]="treeNodes()"
+  [preview]="preview()"
+  [emptyIcon]="'/icons/file.svg'"
+  [emptyText]="'fileContentBrowser.noFiles' | translate"
+  (close)="close.emit()"
+  (nodeClick)="onNodeClick($event)"
+/>

@@ -1,0 +1,455 @@
+<section class="edit-section">
+  <div class="section-header">
+    <h2>{{ "editChatbot.settings" | translate }}</h2>
+  </div>
+  <div class="section-content">
+    <div class="settings-group">
+      <h4>{{ "editChatbot.availability" | translate }}</h4>
+      <div class="settings-list">
+        <div class="setting-item">
+          <label class="setting-label">
+            <input
+              type="radio"
+              name="availability"
+              value="public"
+              [checked]="chatbot().access_level === 'public'"
+              (change)="updateAccessLevel('public')"
+            />
+            <div class="radio-content">
+              <strong>{{ "editChatbot.public" | translate }}</strong>
+              <span>{{
+                "editChatbot.publicDescription" | translate
+              }}</span>
+            </div>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <label class="setting-label">
+            <input
+              type="radio"
+              name="availability"
+              value="password"
+              [checked]="chatbot().access_level === 'password'"
+              (change)="updateAccessLevel('password')"
+            />
+            <div class="radio-content">
+              <strong>{{
+                "editChatbot.passwordProtected" | translate
+              }}</strong>
+              <span>{{
+                "editChatbot.passwordDescription" | translate
+              }}</span>
+            </div>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <label class="setting-label">
+            <input
+              type="radio"
+              name="availability"
+              value="private"
+              [checked]="chatbot().access_level === 'private'"
+              (change)="updateAccessLevel('private')"
+            />
+            <div class="radio-content">
+              <strong>{{ "editChatbot.private" | translate }}</strong>
+              <span>{{
+                "editChatbot.privateDescription" | translate
+              }}</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      @if (showPasswordInput() && chatbot().access_level ===
+      'password') {
+      <div class="password-section">
+        @if (isEditingPassword()) {
+        <div class="password-edit">
+          <label class="field-label">
+            {{ "editChatbot.setPassword" | translate }}
+          </label>
+          <div class="password-input-group">
+            <input
+              type="password"
+              class="form-input"
+              [(ngModel)]="editPasswordValue"
+              placeholder="{{
+                'editChatbot.enterPassword' | translate
+              }}"
+              minlength="6"
+              maxlength="50"
+              (keyup.enter)="savePassword()"
+              (keyup.escape)="cancelPasswordEdit()"
+            />
+          </div>
+          <p class="password-hint">
+            {{ "editChatbot.passwordHint" | translate }}
+          </p>
+          <div class="edit-actions">
+            <button
+              class="btn btn-primary btn-md"
+              (click)="savePassword()"
+              [disabled]="!editPasswordValue().trim()"
+            >
+              {{ "editChatbot.save" | translate }}
+            </button>
+            <button
+              class="btn btn-ghost btn-md"
+              (click)="cancelPasswordEdit()"
+            >
+              {{ "editChatbot.cancel" | translate }}
+            </button>
+          </div>
+        </div>
+        } @else {
+        <div class="password-display">
+          <div class="password-status">
+            <img
+              src="/icons/check-circle.svg"
+              alt="Set"
+              width="16"
+              height="16"
+            />
+            <span>{{ "editChatbot.passwordSet" | translate }}</span>
+          </div>
+          <button
+            class="btn btn-secondary btn-sm"
+            (click)="changePassword()"
+          >
+            {{ "editChatbot.changePassword" | translate }}
+          </button>
+        </div>
+        }
+      </div>
+      }
+    </div>
+
+    <div class="settings-group">
+      <h4>{{ "editChatbot.integration" | translate }}</h4>
+
+      <div class="fields-list">
+        <div class="integration-field">
+          <label>{{ "editChatbot.chatbotUrl" | translate }}</label>
+          <div class="url-display">
+            <code>{{ chatbot().chatbot_url }}</code>
+            <button
+              class="btn btn-ghost btn-sm"
+              (click)="copyUrl()"
+              title="Copy URL"
+            >
+              <img
+                src="/icons/copy.svg"
+                alt="Copy"
+                width="16"
+                height="16"
+              />
+            </button>
+          </div>
+        </div>
+        <div class="integration-field QR">
+          <label>{{ "editChatbot.qrCode" | translate }}</label>
+          <button
+            class="btn btn-secondary"
+            (click)="showQRModal.emit()"
+            type="button"
+          ><img src="/icons/qr.svg" alt="QR" width="20px" height="20px"/>
+            {{ "editChatbot.viewQRCode" | translate }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h4>{{ "editChatbot.chatbotStatus" | translate }}</h4>
+      <div class="status-control">
+        <div class="status-info">
+          <strong>{{
+            chatbot().enabled
+              ? ("editChatbot.enabled" | translate)
+              : ("editChatbot.disabled" | translate)
+          }}</strong>
+
+          <p>
+            {{
+              chatbot().enabled
+                ? ("editChatbot.currentlyActive" | translate)
+                : ("editChatbot.currentlyDisabled" | translate)
+            }}
+          </p>
+        </div>
+        <label class="toggle-switch">
+          <input
+            type="checkbox"
+            [checked]="chatbot().enabled"
+            (change)="toggleChatbotStatus()"
+            [attr.aria-label]="'Toggle chatbot status'"
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h4>{{ "editChatbot.persistSession" | translate }}</h4>
+      <div class="status-control">
+        <div class="status-info">
+          <strong>{{
+            chatbot().persist_session
+              ? ("editChatbot.persistSessionEnabled" | translate)
+              : ("editChatbot.persistSessionDisabled" | translate)
+          }}</strong>
+          <p>
+            {{
+              chatbot().persist_session
+                ? ("editChatbot.persistSessionEnabledDescription" | translate)
+                : ("editChatbot.persistSessionDisabledDescription" | translate)
+            }}
+          </p>
+        </div>
+        <label class="toggle-switch">
+          <input
+            type="checkbox"
+            [checked]="chatbot().persist_session"
+            (change)="togglePersistSession()"
+            [attr.aria-label]="'Toggle session persistence'"
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h4>{{ "editChatbot.apiAccess" | translate }} <span class="beta-badge">Beta</span></h4>
+      <div class="status-control">
+        <div class="status-info">
+          <strong>{{
+            chatbot().api_enabled
+              ? ("editChatbot.apiEnabled" | translate)
+              : ("editChatbot.apiDisabled" | translate)
+          }}</strong>
+          <p>
+            {{
+              chatbot().api_enabled
+                ? ("editChatbot.apiEnabledDescription" | translate)
+                : ("editChatbot.apiDisabledDescription" | translate)
+            }}
+          </p>
+        </div>
+        <label class="toggle-switch">
+          <input
+            type="checkbox"
+            [checked]="chatbot().api_enabled"
+            (change)="toggleApiEnabled()"
+            [attr.aria-label]="'Toggle API access'"
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      @if (chatbot().api_enabled && chatbot().token) {
+      <div class="fields-list">
+        <div class="integration-field">
+          <label>{{ "editChatbot.apiEndpoint" | translate }}</label>
+          <div class="url-display">
+            <code>{{ apiEndpointUrl() }}</code>
+            <button
+              class="btn btn-ghost btn-sm"
+              (click)="copyApiEndpoint()"
+              title="Copy endpoint URL"
+            >
+              <img
+                src="/icons/copy.svg"
+                alt="Copy"
+                width="16"
+                height="16"
+              />
+            </button>
+          </div>
+        </div>
+        <div class="integration-field">
+          <label>{{ "editChatbot.apiKey" | translate }}</label>
+          <div class="token-display">
+            <code>{{ maskedApiToken() }}</code>
+            <button
+              class="btn btn-ghost btn-sm"
+              (click)="toggleApiTokenVisibility()"
+              title="Toggle visibility"
+            >
+              <img
+                [src]="
+                  showApiToken()
+                    ? '/icons/eye-off.svg'
+                    : '/icons/eye.svg'
+                "
+                alt="Toggle"
+                width="16"
+                height="16"
+              />
+            </button>
+            <button
+              class="btn btn-ghost btn-sm"
+              (click)="copyApiToken()"
+              title="Copy API key"
+            >
+              <img
+                src="/icons/copy.svg"
+                alt="Copy"
+                width="16"
+                height="16"
+              />
+            </button>
+            <button
+              class="btn btn-ghost btn-sm"
+              (click)="rotateApiToken()"
+              [disabled]="isRotatingApiToken()"
+              [title]="'editChatbot.rotateApiKey' | translate"
+            >
+              {{
+                isRotatingApiToken()
+                  ? ("editChatbot.rotating" | translate)
+                  : ("editChatbot.rotate" | translate)
+              }}
+            </button>
+          </div>
+        </div>
+        <a
+          class="btn btn-secondary btn-sm"
+          href="https://documentation.skilltech.tools/platform/alice.skilltech.tools/guides/api-access/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img
+            src="/icons/external-link.svg"
+            alt=""
+            width="16"
+            height="16"
+          />
+          {{ "editChatbot.apiDocumentation" | translate }}
+        </a>
+      </div>
+      }
+    </div>
+
+    @if (hasMoodleDatasource()) {
+    <div class="settings-group">
+      <h4>{{ "editChatbot.reindexSchedule" | translate }}</h4>
+      <div class="status-control">
+        <div class="status-info">
+          <strong>{{
+            scheduleEnabled()
+              ? ("editChatbot.scheduleEnabled" | translate)
+              : ("editChatbot.scheduleDisabled" | translate)
+          }}</strong>
+          <p>{{ "editChatbot.scheduleHint" | translate }}</p>
+        </div>
+        <label class="toggle-switch">
+          <input
+            type="checkbox"
+            [checked]="scheduleEnabled()"
+            (change)="scheduleEnabled.set(!scheduleEnabled())"
+            [attr.aria-label]="'Toggle reindex schedule'"
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      @if (scheduleEnabled()) {
+      <div class="fields-list">
+        <div class="integration-field">
+          <label>{{ "editChatbot.scheduleFrequency" | translate }}</label>
+          <select
+            class="form-input"
+            [ngModel]="scheduleFrequency()"
+            (ngModelChange)="scheduleFrequency.set($event)"
+          >
+            <option [ngValue]="'weekly'">
+              {{ "editChatbot.frequencyWeekly" | translate }}
+            </option>
+            <option [ngValue]="'monthly'">
+              {{ "editChatbot.frequencyMonthly" | translate }}
+            </option>
+          </select>
+        </div>
+
+        @if (scheduleFrequency() === 'weekly') {
+        <div class="integration-field">
+          <label>{{ "editChatbot.scheduleDayOfWeek" | translate }}</label>
+          <select
+            class="form-input"
+            [ngModel]="scheduleDayOfWeek()"
+            (ngModelChange)="scheduleDayOfWeek.set($event)"
+          >
+            @for (d of daysOfWeek; track d.value) {
+            <option [ngValue]="d.value">{{ d.labelKey | translate }}</option>
+            }
+          </select>
+        </div>
+        } @else {
+        <div class="integration-field">
+          <label>{{ "editChatbot.scheduleDayOfMonth" | translate }}</label>
+          <select
+            class="form-input"
+            [ngModel]="scheduleDayOfMonth()"
+            (ngModelChange)="scheduleDayOfMonth.set($event)"
+          >
+            @for (d of daysOfMonth; track d) {
+            <option [ngValue]="d">{{ d }}</option>
+            }
+          </select>
+        </div>
+        }
+
+        <div class="integration-field">
+          <label>{{ "editChatbot.scheduleTime" | translate }}</label>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <select
+              class="form-input"
+              [ngModel]="scheduleHour()"
+              (ngModelChange)="scheduleHour.set($event)"
+            >
+              @for (h of hours; track h) {
+              <option [ngValue]="h">{{ h.toString().padStart(2, '0') }}</option>
+              }
+            </select>
+            <span>:</span>
+            <select
+              class="form-input"
+              [ngModel]="scheduleMinutePreset()"
+              (ngModelChange)="onScheduleMinutePresetChange($event)"
+            >
+              <option [ngValue]="0">00</option>
+              <option [ngValue]="15">15</option>
+              <option [ngValue]="30">30</option>
+              <option [ngValue]="45">45</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      }
+
+      @if (scheduleError()) {
+      <p class="password-hint" style="color: var(--color-error, #c00);">
+        {{ scheduleError()! | translate }}
+      </p>
+      }
+
+      <div class="edit-actions">
+        <button
+          class="btn btn-primary btn-md"
+          (click)="saveSchedule()"
+          [disabled]="isSavingSchedule()"
+        >
+          {{
+            isSavingSchedule()
+              ? ("editChatbot.saving" | translate)
+              : ("editChatbot.save" | translate)
+          }}
+        </button>
+      </div>
+    </div>
+    }
+  </div>
+</section>

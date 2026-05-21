@@ -1,0 +1,16 @@
+<main class="welcome-page">
+    <app-language-selector></app-language-selector>
+    <div class="welcome-container">
+         <div class="welcome-language-selector">
+            
+        </div>
+        <h1 class="welcome-title">{{"welcome.welcome-title" | translate}}</h1>
+        <img src="/icons/alice_logo2.svg" alt="">
+        <p class="welcome-description">
+            {{"welcome.welcome-description" | translate}}
+        </p>
+        <button class="btn btn-primary btn-lg" (click)="login()">
+            {{"welcome.login" | translate}}
+        </button>
+    </div>
+</main>

@@ -1,0 +1,772 @@
+<div class="edit-chatbot" [class.split-view]="showPreview() && !isProcessing()">
+  @if (loading()) {
+  <div class="loading-container">
+    <div class="loading-spinner"></div>
+    <p>{{ "editChatbot.loadingChatbot" | translate }}</p>
+  </div>
+  } @if (error()) {
+  <div class="error-container">
+    <div class="error-message">
+      <h2>{{ "editChatbot.error" | translate }}</h2>
+      <p>{{ error() }}</p>
+      <button class="btn btn-primary" (click)="goBack()">
+        {{ "editChatbot.goBack" | translate }}
+      </button>
+    </div>
+  </div>
+  } @if (chatbot() && !loading() && !error()) {
+  <div class="edit-layout">
+    <div class="edit-panel">
+      <div class="edit-chatbot-content">
+        <div class="edit-header">
+          <button class="btn btn-ghost btn-back" (click)="goBack()">
+            <img
+              src="/icons/arrow-left.svg"
+              alt="Back"
+              width="20"
+              height="20"
+            />
+          </button>
+          <h1 [title]="chatbot()?.name">{{ chatbot()?.name }}</h1>
+          <span class="status-badge" [class]="statusConfig().class">
+            @if (isProcessing()) {
+              <div class="loading-spinner small"></div>
+            } @else {
+              <img
+                [src]="'/icons/' + statusConfig().icon + '.svg'"
+                [alt]="statusConfig().label"
+                width="16"
+                height="16"
+              />
+            }
+            @if (isProcessing() && isWaitingMetadata()) {
+              {{ jobProgress()?.message ?? ('editChatbot.waitingMetadata' | translate) }}
+            } @else if (isProcessing() && jobProgress()) {
+              {{ 'editChatbot.processingProgress' | translate: { percentage: jobProgress()!.percentage } }}
+            } @else {
+              {{ statusConfig().label | translate }}
+            }
+            @if (!isProcessing() && hasFailedFiles()) {
+              <span
+                class="status-warning-icon warning-mask-icon"
+                [title]="'editChatbot.failedFilesWarning' | translate: { count: failedFiles().length }"
+                [attr.aria-label]="'editChatbot.failedFilesWarning' | translate: { count: failedFiles().length }"
+                role="img"
+              ></span>
+            }
+          </span>
+          @if (isProcessing() && jobProgress()) {
+            <div class="job-progress">
+              <div class="progress-bar">
+                <div class="progress-fill" [style.width.%]="jobProgress()!.percentage"></div>
+              </div>
+              <div class="progress-info">
+                @if (hasJobFiles()) {
+                  <button
+                    type="button"
+                    class="btn-toggle-files"
+                    (click)="toggleFilesExpanded()"
+                    [attr.aria-expanded]="filesExpanded()"
+                  >
+                    <span class="file-count">
+                      {{ jobFiles().length }}
+                      {{ 'editChatbot.files' | translate }}
+                    </span>
+                    <span class="chevron" [class.chevron-open]="filesExpanded()" aria-hidden="true">▾</span>
+                  </button>
+                }
+              </div>
+
+              @if (filesExpanded() && hasJobFiles()) {
+                <div class="file-list" role="region" aria-label="File progress">
+                  @for (file of jobFiles(); track file.id) {
+                    <div class="file-row">
+                      <div class="file-row-main">
+                        <span class="file-name" [title]="file.filename | mlang">{{ file.filename | mlang }}</span>
+                        <span class="file-state-badge" [class]="'file-state-' + file.state">{{ 'fileState.' + file.state | translate }}</span>
+                      </div>
+                      @if (file.error_message) {
+                        <div
+                          class="file-error"
+                          [title]="
+                            file.error_code === 'empty_content'
+                              ? ('editChatbot.ingestionFailedEmptyContent' | translate)
+                              : file.error_message
+                          "
+                        >
+                          {{
+                            file.error_code === 'empty_content'
+                              ? ('editChatbot.ingestionFailedEmptyContent' | translate)
+                              : file.error_message
+                          }}
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="edit-main">
+          <section class="edit-section">
+            <div class="section-header">
+              <h2>{{ "editChatbot.basicInformation" | translate }}</h2>
+            </div>
+            <div class="section-content">
+              <div class="edit-field">
+                <label class="field-label">{{
+                  "editChatbot.name" | translate
+                }}</label>
+                @if (!isEditingName()) {
+                <div class="field-display">
+                  <span class="field-value" [title]="chatbot()?.name">{{
+                    chatbot()?.name
+                  }}</span>
+                  <button
+                    class="btn-icon"
+                    (click)="startEditingName()"
+                    title="Edit name"
+                  >
+                    <img
+                      src="/icons/edit.svg"
+                      alt="Edit"
+                      width="16"
+                      height="16"
+                    />
+                  </button>
+                </div>
+                } @else {
+                <div class="field-edit">
+                  <input
+                    type="text"
+                    class="form-input"
+                    [(ngModel)]="editNameValue"
+                    (keyup.enter)="saveName()"
+                    (keyup.escape)="cancelEditName()"
+                    maxlength="100"
+                    placeholder="Enter chatbot name"
+                  />
+                  <div class="edit-actions">
+                    <button class="btn btn-primary btn-md" (click)="saveName()">
+                      {{ "editChatbot.save" | translate }}
+                    </button>
+                    <button
+                      class="btn btn-ghost btn-md"
+                      (click)="cancelEditName()"
+                    >
+                      {{ "editChatbot.cancel" | translate }}
+                    </button>
+                  </div>
+                </div>
+                }
+              </div>
+
+              <div class="edit-field">
+                <label class="field-label">{{
+                  "editChatbot.description" | translate
+                }}</label>
+                @if (!isEditingDescription()) {
+                <div class="field-display">
+                  <p class="field-text" [title]="chatbot()?.description || ''">
+                    {{ chatbot()?.description || "No description" }}
+                  </p>
+                  <button
+                    class="btn-icon"
+                    (click)="startEditingDescription()"
+                    title="Edit description"
+                  >
+                    <img
+                      src="/icons/edit.svg"
+                      alt="Edit"
+                      width="16"
+                      height="16"
+                    />
+                  </button>
+                </div>
+                } @else {
+                <div class="field-edit">
+                  <textarea
+                    class="form-textarea"
+                    [(ngModel)]="editDescriptionValue"
+                    placeholder="Enter description"
+                    rows="3"
+                    maxlength="500"
+                  ></textarea>
+                  <div class="edit-actions">
+                    <button
+                      class="btn btn-primary btn-md"
+                      (click)="saveDescription()"
+                    >
+                      {{ "editChatbot.save" | translate }}
+                    </button>
+                    <button
+                      class="btn btn-ghost btn-md"
+                      (click)="cancelEditDescription()"
+                    >
+                      {{ "editChatbot.cancel" | translate }}
+                    </button>
+                  </div>
+                </div>
+                }
+              </div>
+
+              <div class="edit-field personas">
+                <label class="field-label">{{
+                  "editChatbot.persona" | translate
+                }}</label>
+
+                <div class="field-edit">
+                  <div class="persona-cards">
+                    @for (card of personaCards(); track card.id) {
+                    <div
+                      class="persona-card"
+                      [class.selected]="selectedPersonaCard() === card.id"
+                      (click)="selectPersonaCard(card.id)"
+                    >
+                      <div class="infos">
+                        <h4>{{ card.titleKey | translate }}</h4>
+                        <p>{{ card.descriptionKey | translate }}</p>
+                      </div>
+                      <img
+                        [src]="'/icons/avatar' + ($index + 1) + '.png'"
+                        [alt]="card.id"
+                      />
+                    </div>
+                    }
+                  </div>
+
+                  @if (selectedPersonaCard() === 'custom') {
+                  <textarea
+                    class="form-textarea"
+                    [(ngModel)]="editPersonaValue"
+                    [placeholder]="'editChatbot.personaCustomPlaceholder' | translate"
+                    rows="6"
+                    maxlength="5000"
+                    [disabled]="
+                      selectedPersonaCard() !== 'custom' &&
+                      selectedPersonaCard() !== null
+                    "
+                  ></textarea>
+                  <a
+                    class="persona-learn-more"
+                    href="https://documentation.skilltech.tools/platform/alice.skilltech.tools/guides/custom-persona/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {{ "editChatbot.personaCustomLearnMore" | translate }}
+                    <img
+                      src="/icons/external-link.svg"
+                      alt=""
+                      width="14"
+                      height="14"
+                    />
+                  </a>
+                  }
+
+                  @if (isPersonaModified()) {
+                  <div class="edit-actions">
+                    <button
+                      class="btn btn-primary btn-md"
+                      (click)="savePersona()"
+                    >
+                      {{ "editChatbot.save" | translate }}
+                    </button>
+                    <button
+                      class="btn btn-ghost btn-md"
+                      (click)="cancelEditPersona()"
+                    >
+                      {{ "editChatbot.cancel" | translate }}
+                    </button>
+                  </div>
+                  }
+                </div>
+              </div>
+
+              <div class="edit-field avatar-field">
+                <label class="field-label">{{
+                  "editChatbot.avatarSection" | translate
+                }}</label>
+                <div class="field-edit">
+                  <label class="toggle-row">
+                    <input
+                      type="checkbox"
+                      [checked]="useCustomAvatar()"
+                      (change)="toggleCustomAvatar($any($event.target).checked)"
+                    />
+                    <span class="field-label">
+                      {{ "editChatbot.useCustomAvatar" | translate }}
+                    </span>
+                  </label>
+
+                  <div class="avatar-row">
+                    @if (useCustomAvatar()) {
+                      <div class="avatar-preview">
+                        @if (hasCustomAvatarImage()) {
+                          <img
+                            [src]="customAvatarUrl()"
+                            alt="Chatbot avatar"
+                          />
+                        }
+                      </div>
+
+                      <div class="avatar-actions">
+                        <input
+                          #avatarInput
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          hidden
+                          (change)="onAvatarFileSelected($event)"
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          (click)="avatarInput.click()"
+                          [disabled]="isUploadingAvatar()"
+                        >
+                          @if (isUploadingAvatar()) {
+                            <div class="loading-spinner small"></div>
+                            {{ "editChatbot.avatarUploading" | translate }}
+                          } @else if (chatbot()?.avatar_storage_path) {
+                            {{ "editChatbot.avatarChange" | translate }}
+                          } @else {
+                            {{ "editChatbot.avatarChoose" | translate }}
+                          }
+                        </button>
+                        <span class="field-hint">
+                          {{ "editChatbot.avatarHint" | translate }}
+                        </span>
+                      </div>
+                    } @else {
+                      <span class="field-hint">
+                        {{ "editChatbot.avatarFallbackHint" | translate }}
+                      </span>
+                    }
+                  </div>
+
+                  @if (avatarError()) {
+                    <div class="field-error">
+                      {{ avatarError()! | translate }}
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <div class="edit-field suggestions-field">
+                <div class="suggestions-header">
+                  <label class="field-label">
+                    {{ "editChatbot.promptSuggestions" | translate }}
+                  </label>
+                  <span class="info-tooltip">
+                    <img src="/icons/info.svg" alt="Info" width="14" height="14" />
+                    <span class="tooltip-text">{{ "editChatbot.promptSuggestionsDescription" | translate }}</span>
+                  </span>
+                </div>
+                @if (!isEditingSuggestions()) {
+                @if (chatbot()?.prompt_suggestions?.length) {
+                <div class="field-display">
+                  <div class="suggestions-list">
+                    @for (suggestion of chatbot()!.prompt_suggestions!; track suggestion) {
+                      <div class="suggestion-item">{{ suggestion }}</div>
+                    }
+                  </div>
+                  <button
+                    class="btn-icon"
+                    (click)="startEditingSuggestions()"
+                    title="Edit suggestions"
+                  >
+                    <img
+                      src="/icons/edit.svg"
+                      alt="Edit"
+                      width="16"
+                      height="16"
+                    />
+                  </button>
+                </div>
+                } @else {
+                <button class="btn btn-ghost btn-sm" (click)="startEditingSuggestionsWithNew()">
+                  + {{ "editChatbot.addSuggestion" | translate }}
+                </button>
+                }
+                } @else {
+                <div class="field-edit">
+                  <div class="suggestions-edit-list">
+                    @for (suggestion of editSuggestionsValue(); track $index) {
+                    <div class="suggestion-edit-row">
+                      <input
+                        type="text"
+                        class="form-input"
+                        [value]="suggestion"
+                        (input)="updateSuggestion($index, $any($event.target).value)"
+                        [placeholder]="'editChatbot.suggestionPlaceholder' | translate"
+                        maxlength="150"
+                      />
+                      <button
+                        class="btn-icon btn-remove"
+                        (click)="removeSuggestion($index)"
+                        title="Remove"
+                      >
+                        <img
+                          src="/icons/trash_red.svg"
+                          alt="Remove"
+                          width="16"
+                          height="16"
+                        />
+                      </button>
+                    </div>
+                    }
+                  </div>
+                  @if (editSuggestionsValue().length < 4) {
+                  <button class="btn btn-ghost btn-sm" (click)="addSuggestion()">
+                    + {{ "editChatbot.addSuggestion" | translate }}
+                  </button>
+                  } @else {
+                  <span class="field-hint">{{ "editChatbot.maxSuggestions" | translate }}</span>
+                  }
+                  <div class="edit-actions">
+                    <button
+                      class="btn btn-primary btn-md"
+                      (click)="saveSuggestions()"
+                    >
+                      {{ "editChatbot.save" | translate }}
+                    </button>
+                    <button
+                      class="btn btn-ghost btn-md"
+                      (click)="cancelEditSuggestions()"
+                    >
+                      {{ "editChatbot.cancel" | translate }}
+                    </button>
+                  </div>
+                </div>
+                }
+              </div>
+
+              <div class="edit-field">
+                <label class="toggle-row">
+                  <input
+                    type="checkbox"
+                    [checked]="chatbot()!.cite_sources"
+                    (change)="toggleCiteSources($any($event.target).checked)"
+                  />
+                  <span class="field-label">
+                    {{ "newChatbot.config.citeSources" | translate }}
+                  </span>
+                  <span class="info-tooltip">
+                    <img src="/icons/info.svg" alt="Info" width="14" height="14" />
+                    <span class="tooltip-text">{{ "newChatbot.config.citeSourcesDescription" | translate }}</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="edit-section gestion">
+            <div class="section-header">
+              <h2>{{ "editChatbot.contentManagement" | translate }}</h2>
+            </div>
+            <div class="section-content">
+              @if(hasMoodleCourses()) {
+              <div class="content-management-item">
+                <div class="item-info">
+                  <div class="big moodle">
+                    <img src="/icons/logo_moodle.svg" alt="" />
+                  </div>
+                  <div class="row">
+                    <h4>{{ "editChatbot.moodleCourses" | translate }}</h4>
+                    <p>
+                      <strong>{{ linkedCoursesCount() || 0 }}</strong>
+                      {{ "editChatbot.coursesLinked" | translate }}
+                    </p>
+                  </div>
+                </div>
+                <div class="item-actions">
+                <button
+                  class="btn btn-secondary"
+                  (click)="isModalOpen.set(true)"
+                >
+                  <img
+                    src="/icons/book-open.svg"
+                    alt="Courses"
+                    width="16"
+                    height="16"
+                  />
+                  {{ "editChatbot.manageCourses" | translate }}
+                </button>
+                <button
+                  class="btn btn-secondary"
+                  (click)="showMoodleContentBrowser.set(true)"
+                  [disabled]="isProcessing()"
+                >
+                  <img
+                    src="/icons/scan-preview.svg"
+                    alt="Browse"
+                    width="16"
+                    height="16"
+                  />
+                  {{ "editChatbot.browseContent" | translate }}
+                </button>
+              </div>
+              </div>
+
+              } @if(hasFilesDatasource()){
+              <div
+                class="content-management-item"
+                [class.has-warning]="hasFailedFiles()"
+              >
+                <div class="item-info">
+                  <div class="big files">
+                    <img src="/icons/file_white.svg" alt="" />
+                  </div>
+                  <div class="row">
+                    <h4>{{ "editChatbot.additionalFiles" | translate }}</h4>
+                    <p>
+                      <strong>{{ files().length }}</strong>
+                      {{ "editChatbot.filesUploaded" | translate }}
+                    </p>
+                    @if (hasFailedFiles()) {
+                      <button
+                        type="button"
+                        class="files-failed-warning"
+                        (click)="manageFiles()"
+                      >
+                        <span
+                          class="files-failed-icon warning-mask-icon"
+                          aria-hidden="true"
+                        ></span>
+                        <span class="files-failed-text">
+                          {{ 'editChatbot.failedFilesWarning' | translate: { count: failedFiles().length } }}
+                        </span>
+                      </button>
+                    }
+                  </div>
+                </div>
+                <div class="item-actions">
+                <button
+                  class="btn"
+                  [class.btn-secondary]="!hasFailedFiles()"
+                  [class.btn-warning]="hasFailedFiles()"
+                  (click)="manageFiles()"
+                >
+                  <img
+                    src="/icons/icon_file.svg"
+                    alt="Files"
+                    width="15"
+                    height="15"
+                  />
+                  {{ (hasFailedFiles() ? 'editChatbot.reviewFailedFiles' : 'editChatbot.manageFiles') | translate }}
+                </button>
+                <button
+                  class="btn btn-secondary"
+                  (click)="showFileContentBrowser.set(true)"
+                  [disabled]="isProcessing()"
+                >
+                  <img
+                    src="/icons/scan-preview.svg"
+                    alt="Browse"
+                    width="16"
+                    height="16"
+                  />
+                  {{ "editChatbot.browseContent" | translate }}
+                </button>
+                </div>
+              </div>
+              }
+              <label class="force-ocr-option">
+                <input
+                  type="checkbox"
+                  [checked]="chatbot()!.force_ocr"
+                  (change)="toggleForceOcr($any($event.target).checked)"
+                  [disabled]="isSynchronising()"
+                />
+                <span class="force-ocr-label">{{ "editChatbot.forceOcr" | translate }}</span>
+                <span class="info-tooltip">
+                  <img src="/icons/info.svg" alt="Info" width="14" height="14" />
+                  <span class="tooltip-text">{{ "editChatbot.forceOcrHint" | translate }}</span>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <app-chatbot-settings
+            [chatbot]="chatbot()!"
+            (chatbotChange)="handleChatbotChange($event)"
+            (showQRModal)="showQRModal.set(true)"
+          />
+        </div>
+        <div class="actions-grid">
+          @if (isProcessing()) {
+          <button
+            class="btn btn-danger action-btn cancel-indexing-btn"
+            [class.cancelling]="isCancelling()"
+            (click)="cancelIndexing()"
+            [disabled]="isCancelling()"
+          >
+            @if (isCancelling()) {
+            <div class="loading-spinner small box"></div>
+            {{ "editChatbot.cancelling" | translate }} } @else {
+            <div class="box">
+              <img
+                src="/icons/x-circle.svg"
+                alt="Cancel"
+                width="20"
+                height="20"
+              />
+            </div>
+            <div class="btn-content">
+              <strong>{{ "editChatbot.cancelIndexing" | translate }}</strong>
+              <span>{{ "editChatbot.cancelIndexingHint" | translate }}</span>
+            </div>
+            }
+          </button>
+          } @else {
+          <button
+            class="btn btn-secondary action-btn"
+            (click)="synchronizeChatbot()"
+            [disabled]="isSynchronising()"
+          >
+            @if (isSynchronising()) {
+            <div class="loading-spinner small box"></div>
+            {{ "editChatbot.synchronizing" | translate }} } @else {
+            <div class="box refresh">
+              <img
+                src="/icons/refresh2.svg"
+                alt="Sync"
+                width="20"
+                height="20"
+              />
+            </div>
+            <div class="btn-content">
+              <strong>{{ "editChatbot.synchronize" | translate }}</strong>
+              <span>{{ "editChatbot.updateContent" | translate }}</span>
+            </div>
+            }
+          </button>
+          }
+
+          <button
+            class="btn action-btn"
+            [class]="showPreview() ? 'btn-warning' : 'btn-secondary'"
+            (click)="previewChatbot()"
+            [disabled]="!canPreview()"
+          >
+            <div class="box preview">
+              <img
+                [src]="showPreview() ? '/icons/x-circle.svg' : '/icons/eye.svg'"
+                alt="Preview"
+                width="20"
+                height="20"
+              />
+            </div>
+
+            <div class="btn-content">
+              <strong>{{
+                showPreview()
+                  ? ("editChatbot.closePreview" | translate)
+                  : ("editChatbot.preview" | translate)
+              }}</strong>
+              <span>{{
+                showPreview()
+                  ? ("editChatbot.returnToEdit" | translate)
+                  : ("editChatbot.testInterface" | translate)
+              }}</span>
+            </div>
+          </button>
+
+          <button
+            class="btn btn-error action-btn"
+            (click)="deleteChatbot()"
+            [disabled]="isDeleting()"
+          >
+            @if (isDeleting()) {
+            <div class="loading-spinner small"></div>
+            {{ "editChatbot.deleting" | translate }}} @else {
+            <div class="box">
+              <img
+                src="/icons/trash_red.svg"
+                alt="Delete"
+                width="20"
+                height="20"
+              />
+            </div>
+            <div class="btn-content">
+              <strong>{{ "editChatbot.delete" | translate }}</strong>
+              <span>{{ "editChatbot.permanentlyRemove" | translate }}</span>
+            </div>
+            }
+          </button>
+          @if (actionError()) {
+            <div class="field-error action-error">
+              {{ actionError()! | translate }}
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    @if (showPreview() && canPreview()) {
+    <div class="preview-panel">
+      <div class="preview-header">
+        <h3>{{ "editChatbot.preview" | translate }}</h3>
+        <button
+          class="btn btn-ghost btn-md closebtn"
+          (click)="previewChatbot()"
+        >
+          <img src="/icons/x-circle.svg" alt="Close" width="16" height="16" />
+          {{ "editChatbot.closePreviewShort" | translate }}
+        </button>
+      </div>
+      <div class="preview-content">
+        <app-chat-interface
+          [chatbotId]="chatbot()!.id"
+          [chatbotName]="chatbot()!.name"
+          [compact]="true"
+          [personaType]="chatbot()!.personaType"
+          [promptSuggestions]="chatbot()!.prompt_suggestions || []"
+          [avatarUrl]="chatbot()!.avatar_url"
+        />
+      </div>
+    </div>
+    }
+  </div>
+  } @if (showMoodleContentBrowser()) {
+  <app-moodle-content-browser
+    [chatbotId]="chatbot()?.id!"
+    [isOpen]="showMoodleContentBrowser()"
+    [linkedCourses]="linkedCourses()"
+    (close)="handleMoodleContentBrowserClose()"
+  />
+  } @if (isModalOpen()) {
+  <app-moodle-courses-modal
+    [chatbotId]="chatbot()?.id!"
+    [isOpen]="isModalOpen()"
+    (close)="handleModalClose()"
+    (saved)="handleCoursesSaved()"
+  />
+  }
+  @if (showFileContentBrowser()) {
+  <app-file-content-browser
+    [chatbotId]="chatbot()?.id!"
+    [isOpen]="showFileContentBrowser()"
+    [files]="files()"
+    (close)="handleFileContentBrowserClose()"
+  />
+  }
+  @if (showFileManager()) {
+  <app-file-manager-modal
+    [chatbotId]="chatbot()?.id!"
+    [isOpen]="showFileManager()"
+    [initialFiles]="files()"
+    (close)="handleFileManagerClose()"
+    (saved)="handleFilesSaved()"
+  />
+  }
+
+  @if (showQRModal()) {
+  <app-qr-code-modal
+    [chatbotUrl]="chatbot()!.chatbot_url"
+    [chatbotName]="chatbot()!.name"
+    (close)="showQRModal.set(false)"
+  />
+  }
+</div>

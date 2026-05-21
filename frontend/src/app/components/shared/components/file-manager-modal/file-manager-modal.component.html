@@ -1,0 +1,497 @@
+<div class="modal-overlay" (click)="onOverlayClick($event)">
+  <div
+    class="modal-container file-manager-modal"
+    (click)="$event.stopPropagation()"
+  >
+      @if (!showConfirmChanges()) {
+      <div class="modal-header">
+        <h2 id="modal-title">{{ "editChatbot.manageFiles" | translate }}</h2>
+        <button
+          type="button"
+          class="close-button"
+          aria-label="Close modal"
+          (click)="closeModal()"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      @if (hasFailedFiles()) {
+        <div class="file-manager-failed-warning" role="alert">
+          <span class="warning-icon warning-mask-icon" aria-hidden="true"></span>
+          <span>
+            {{
+              'editChatbot.failedFilesWarning'
+                | translate: { count: failedFiles().length }
+            }}
+          </span>
+        </div>
+      }
+
+      <div class="modal-content">
+        <div class="file-upload-section">
+          <div
+            class="upload-zone"
+            [class.dragging]="isDraggingFiles()"
+            (dragover)="onFilesDragOver($event)"
+            (dragleave)="onFilesDragLeave($event)"
+            (drop)="onFilesDrop($event)"
+            (click)="fileInput.click()"
+          >
+            <div class="upload-icon">
+              <img
+                src="/icons/icon_upload2.svg"
+                alt="Upload"
+                width="48"
+                height="48"
+              />
+            </div>
+            <p class="upload-text">
+              <strong>{{
+                "newChatbot.fileUpload.clickToUpload" | translate
+              }}</strong
+              ><br />
+              <strong>
+                {{ "newChatbot.fileUpload.dragAndDrop" | translate }}
+              </strong>
+            </p>
+            <p class="upload-hint">
+              {{ "newChatbot.fileUpload.supportedFormats" | translate }}
+            </p>
+            <input
+              #fileInput
+              type="file"
+              multiple
+              accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.html,.csv,.tex,.png,.jpg,.jpeg,.tiff,.bmp,.webp,.h5p"
+              (change)="onFilesSelected($event)"
+              style="display: none"
+            />
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary add-text-button"
+            (click)="openCreateTextDialog()"
+          >
+            <img src="/icons/file.svg" alt="" width="16" height="16" aria-hidden="true" />
+            {{ 'textEntry.addButton' | translate }}
+          </button>
+        </div>
+
+        <div class="files-list-section">
+          <div class="files-list-header">
+            <h4>
+              {{ "editChatbot.uploadedFiles" | translate }} ({{
+                displayedFiles().length
+              }})
+            </h4>
+            <div class="files-stats">
+              <span class="stat"
+                >{{ "editChatbot.total" | translate }}
+                {{ formatFileSize(totalFilesSize()) }}</span
+              >
+            </div>
+          </div>
+
+          @if (loading()) {
+          <div class="loading-state" role="status" aria-live="polite">
+            <div class="spinner" aria-hidden="true"></div>
+            <p>{{ "editChatbot.loadingFiles" | translate }}</p>
+          </div>
+          } @else if (displayedFiles().length === 0 && uploadingFiles().length
+          === 0) {
+          <div class="empty-state">
+            <img src="/icons/file.svg" alt="No files" width="48" height="48" />
+            <p>{{ "editChatbot.noFilesYet" | translate }}</p>
+          </div>
+          } @else {
+          <div class="files-list-horizontal">
+            @for (file of displayedFiles(); track file.id) {
+            <div
+              class="file-card-horizontal"
+              [class.marked-for-deletion]="filesToDelete().has(file.id)"
+              [class.staged-file]="stagedFileIds().has(file.id) || stagedTextEntryIds().has(file.id)"
+              [class.uploading]="file.status === 'processing'"
+              [class.ingestion-failed]="file.ingestion_state === 'failed'"
+            >
+              <div class="file-card-content">
+                <div class="file-card-icon">
+                  <img
+                    [src]="getFileIcon(file.mime_type)"
+                    alt="File"
+                    width="24"
+                    height="24"
+                  />
+                </div>
+                <div class="file-card-info">
+                  <h4 class="file-name">{{ file.filename }}</h4>
+                  <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                  @if (file.ingestion_state === 'failed') {
+                    <span
+                      class="file-ingestion-error"
+                      [title]="
+                        file.ingestion_error_code === 'empty_content'
+                          ? ('editChatbot.ingestionFailedEmptyContent' | translate)
+                          : file.ingestion_error
+                      "
+                    >
+                      <span class="warning-icon warning-mask-icon" aria-hidden="true"></span>
+                      {{
+                        file.ingestion_error_code === 'empty_content'
+                          ? ('editChatbot.ingestionFailedEmptyContent' | translate)
+                          : (file.ingestion_error || ('editChatbot.ingestionFailed' | translate))
+                      }}
+                    </span>
+                  }
+                </div>
+              </div>
+
+              @if (file.status === 'processing') {
+              @if (uploadingFiles().length > 0) { @for (upload of
+              uploadingFiles(); track $index) { @if (upload.file.name ===
+              file.filename) {
+              <div class="file-upload-progress">
+                <div class="progress-bar">
+                  <div
+                    class="progress-fill"
+                    [style.width.%]="upload.progress"
+                  ></div>
+                </div>
+                <span class="progress-text">{{ upload.progress }}%</span>
+              </div>
+              } } } } @else {
+              <div class="file-card-actions">
+                @if (!filesToDelete().has(file.id) && file.is_free_text) {
+                <button
+                  class="btn-icon edit-text"
+                  (click)="openEditTextDialog(file)"
+                  [title]="'textEntry.editButton' | translate"
+                  type="button"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                  </svg>
+                </button>
+                }
+                @if (!filesToDelete().has(file.id) && !file.is_free_text) {
+                <button
+                  class="btn-icon preview"
+                  (click)="openFile(file)"
+                  [title]="'editChatbot.preview' | translate"
+                  type="button"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <polyline points="15 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                  </svg>
+                </button>
+                }
+                <button
+                  class="btn-icon"
+                  [class.marked]="filesToDelete().has(file.id)"
+                  (click)="markFileForDeletion(file.id)"
+                  [title]="
+                    filesToDelete().has(file.id)
+                      ? ('editChatbot.undoDeletion' | translate)
+                      : ('editChatbot.markForDeletion' | translate)
+                  "
+                  type="button"
+                >
+                  @if (filesToDelete().has(file.id)) {
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10"/>
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                  </svg>
+                  } @else {
+                  <img
+                    src="/icons/trash_red.svg"
+                    alt="Delete"
+                    width="16"
+                    height="16"
+                  />
+                  }
+                </button>
+              </div>
+              }
+            </div>
+            }
+          </div>
+          }
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary close" (click)="closeModal()">
+          {{ "editChatbot.close" | translate }}
+        </button>
+        @if (hasChanges()) {
+        <button class="btn btn-primary" (click)="proceedToConfirm()">
+          {{ "editChatbot.continue" | translate }}
+          <img src="/icons/arrow-right.svg" alt="Next" width="16" height="16" />
+        </button>
+        }
+      </div>
+      } @else {
+      <div class="modal-header">
+        <h2>{{ "editChatbot.confirmDeletions" | translate }}</h2>
+        <button
+          type="button"
+          class="close-button"
+          aria-label="Close modal"
+          (click)="closeModal()"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-content">
+        <div class="confirm-changes-section">
+          <div class="changes-summary">
+            @if (stagedFiles().length > 0 && uploadingFiles().length === 0) {
+            <div class="change-group upload-group">
+              <h3>
+                <img
+                  src="/icons/icon_upload2.svg"
+                  alt="Upload"
+                  width="20"
+                  height="20"
+                />
+                {{ "editChatbot.filesToUpload" | translate }} ({{
+                  stagedFiles().length
+                }})
+              </h3>
+              <div class="change-list">
+                @for (file of stagedFiles(); track file.id) {
+                <div class="change-item upload">
+                  <img
+                    [src]="getFileIcon(file.type)"
+                    alt="File"
+                    width="16"
+                    height="16"
+                  />
+                  <span class="item-name">{{ file.name }}</span>
+                  <span class="item-size">{{ formatFileSize(file.size) }}</span>
+                </div>
+                }
+              </div>
+            </div>
+            }
+
+            @if (stagedTextEntries().length > 0) {
+            <div class="change-group upload-group">
+              <h3>
+                <img src="/icons/file.svg" alt="Text" width="20" height="20" />
+                {{ "textEntry.confirmHeader" | translate }} ({{
+                  stagedTextEntries().length
+                }})
+              </h3>
+              <div class="change-list">
+                @for (entry of stagedTextEntries(); track entry.id) {
+                <div class="change-item upload">
+                  <img src="/icons/file.svg" alt="Text" width="16" height="16" />
+                  <span class="item-name">
+                    {{ entry.title || ('textEntry.untitled' | translate) }}
+                    @if (entry.replaceFilename) {
+                      <small class="replace-hint">
+                        {{ 'textEntry.replaces' | translate }} {{ entry.replaceFilename }}
+                      </small>
+                    }
+                  </span>
+                  <span class="item-size">{{ entry.content.length }} chars</span>
+                </div>
+                }
+              </div>
+            </div>
+            } @if (uploadingFiles().length > 0) {
+            <div class="change-group upload-group">
+              <h3>
+                <img
+                  src="/icons/icon_upload2.svg"
+                  alt="Upload"
+                  width="20"
+                  height="20"
+                />
+                {{ "editChatbot.uploadingFiles" | translate }} ({{
+                  uploadingFiles().length
+                }})
+              </h3>
+              <div class="change-list">
+                @for (upload of uploadingFiles(); track $index) {
+                <div class="change-item upload uploading">
+                  <div class="file-info">
+                    <img
+                      [src]="getFileIcon(upload.file.type)"
+                      alt="File"
+                      width="16"
+                      height="16"
+                    />
+                    <span class="item-name">{{ upload.file.name }}</span>
+                  </div>
+                  <div class="upload-progress-info">
+                    <div class="progress-bar">
+                      <div
+                        class="progress-fill"
+                        [style.width.%]="upload.progress"
+                      ></div>
+                    </div>
+                    <span class="progress-text">{{ upload.progress }}%</span>
+                  </div>
+                </div>
+                }
+              </div>
+            </div>
+            } @if (filesToDelete().size > 0) {
+            <div class="change-group delete-group">
+              <h3>
+                <img
+                  src="/icons/trash.svg"
+                  alt="Delete"
+                  width="20"
+                  height="20"
+                />
+                {{ "editChatbot.deletedFiles" | translate }} ({{
+                  filesToDelete().size
+                }})
+              </h3>
+              <div class="change-list">
+                @for (file of filesToDeleteList(); track file.id) {
+                <div class="change-item delete">
+                  <img
+                    [src]="getFileIcon(file.mime_type)"
+                    alt="File"
+                    width="16"
+                    height="16"
+                  />
+                  <span class="item-name">{{ file.filename }}</span>
+                  <span class="item-size">{{ formatFileSize(file.size) }}</span>
+                </div>
+                }
+              </div>
+            </div>
+            }
+
+            <div class="change-group result-group">
+              <h3>
+                <img
+                  src="/icons/check-circle.svg"
+                  alt="Result"
+                  width="20"
+                  height="20"
+                />
+                {{ "editChatbot.resultingFiles" | translate }} ({{
+                  resultingFiles().length
+                }})
+              </h3>
+
+              @if (resultingFiles().length === 0) {
+              <div class="change-item">
+                <img
+                  src="/icons/file.svg"
+                  alt="No files"
+                  width="16"
+                  height="16"
+                />
+                <p>{{ "editChatbot.noFilesRemain" | translate }}</p>
+              </div>
+              } @else {
+              <div class="change-list">
+                @for (file of resultingFiles(); track file.id) {
+                <div class="change-item keep">
+                  <img
+                    [src]="getFileIcon(file.mime_type)"
+                    alt="File"
+                    width="16"
+                    height="16"
+                  />
+                  <span class="item-name">{{ file.filename }}</span>
+                  <span class="item-size">{{ formatFileSize(file.size) }}</span>
+                </div>
+                }
+              </div>
+              }
+            </div>
+          </div>
+
+          @if (filesToDelete().size > 0) {
+          <div class="warning-notice">
+            <img src="/icons/info.svg" alt="Warning" width="20" height="20" />
+            <p>
+              <strong>{{ "editChatbot.warning" | translate }}</strong>
+              {{ "editChatbot.deletionPermanent" | translate }}
+            </p>
+          </div>
+          }
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button
+          class="btn btn-secondary"
+          (click)="backToFileManagement()"
+          [disabled]="isUploading()"
+        >
+          <img
+            src="/icons/chevron-left.svg"
+            alt="Back"
+            width="16"
+            height="16"
+          />
+          {{ "editChatbot.back" | translate }}
+        </button>
+        <button
+          class="btn btn-primary"
+          (click)="confirmChanges()"
+          [disabled]="isUploading()"
+        >
+          @if (isUploading()) {
+          <span class="button-spinner" aria-hidden="true"></span>
+          {{ "editChatbot.deleting" | translate }}
+          } @else {
+          {{ "editChatbot.confirm" | translate }}
+          <img
+            src="/icons/icon_check.svg"
+            alt="Create"
+            width="16"
+            height="16"
+          />
+          }
+        </button>
+      </div>
+      }
+
+  </div>
+</div>
+
+@if (textDialogOpen()) {
+  <app-text-entry-dialog
+    [mode]="textDialogMode()"
+    [initialTitle]="textDialogInitialTitle()"
+    [initialContent]="textDialogInitialContent()"
+    [isLoading]="textDialogLoading()"
+    [resetToken]="textDialogResetToken()"
+    (close)="closeTextDialog()"
+    (save)="onTextDialogSave($event)"
+  />
+}
+

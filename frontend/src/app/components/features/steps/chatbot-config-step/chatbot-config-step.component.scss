@@ -1,0 +1,86 @@
+.custom-persona-section {
+  margin-top: 1.5rem;
+
+  .field-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .form-textarea {
+    width: 100%;
+    min-height: 150px;
+  }
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+
+  .section-title {
+    margin-bottom: 0;
+  }
+}
+
+.info-tooltip {
+  position: relative;
+  display: inline-flex;
+  cursor: help;
+
+  img {
+    opacity: 0.5;
+    transition: opacity 0.2s;
+  }
+
+  &:hover img {
+    opacity: 0.8;
+  }
+
+  .tooltip-text {
+    display: none;
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    background-color: var(--gray-800, #1f2937);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 400;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    white-space: normal;
+    width: max-content;
+    max-width: 260px;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  &:hover .tooltip-text {
+    display: block;
+  }
+}
+
+.suggestions-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  .suggestion-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    .form-input {
+      flex: 1;
+    }
+  }
+}
+
+.field-hint {
+  font-size: 0.8rem;
+  color: var(--gray-500);
+  margin-top: 0.25rem;
+}

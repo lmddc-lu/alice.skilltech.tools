@@ -1,0 +1,13 @@
+<header class="app-header">
+    <div class="header-content">
+        <div class="logo">
+            <img src="/icons/alice_logo.svg" alt="Alice" width="80" routerLink="/dashboard">
+        </div>
+        <div class="header-user">
+            <span class="user-email">{{userinfo()?.email}}</span>
+            <app-language-selector></app-language-selector>
+            <button class="btn btn-ghost btn-sm" (click)="logout()">
+            </button>
+        </div>
+    </div>
+</header>

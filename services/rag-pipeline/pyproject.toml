@@ -1,0 +1,64 @@
+[project]
+name = "rag-pipeline"
+version = "0.1.0"
+description = "RAG pipeline service using Haystack + Qdrant"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "haystack-ai==2.27.0",
+    "qdrant-haystack==10.3.0",
+    "sentence-transformers==5.3.0",
+    "fastembed-haystack==2.1.0",
+    "redis==7.4.0",
+    "httpx==0.28.1",
+    "docling-core==2.70.2",
+    "docling==2.82.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+    "pytest-cov>=4.1.0",
+    "coverage>=7.12.0",
+    "ruff>=0.14.6",
+    "mypy>=1.18.2",
+    "jinja2>=3.1.4",
+]
+
+[tool.uv]
+package = false
+exclude-newer = "10 days"
+
+[tool.pytest.ini_options]
+pythonpath = ["src/imports", "src/imports/components", "src"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
+ignore_missing_imports = true
+exclude = ["tests/"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long
+]

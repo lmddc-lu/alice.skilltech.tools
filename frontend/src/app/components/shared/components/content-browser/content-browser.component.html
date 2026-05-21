@@ -1,0 +1,123 @@
+<div class="modal-overlay" (click)="onOverlayClick($event)">
+  <div class="modal-container content-browser-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>{{ title() }}</h2>
+      <button
+        type="button"
+        class="close-button"
+        aria-label="Close modal"
+        (click)="close.emit()"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="split-panel">
+      <div class="tree-panel">
+        @if (loadingStructure()) {
+        <div class="panel-status">
+          <div class="spinner"></div>
+          <p>{{ 'contentBrowser.loadingStructure' | translate }}</p>
+        </div>
+        }
+
+        @if (treeNodes().length === 0) {
+        <div class="panel-status">
+          <img [src]="emptyIcon()" alt="" width="32" height="32" style="opacity: 0.3" />
+          <p>{{ emptyText() }}</p>
+        </div>
+        } @else {
+        <ul ngTree #tree="ngTree" [(values)]="selectedValue" class="content-tree">
+          <ng-template
+            [ngTemplateOutlet]="nodesTpl"
+            [ngTemplateOutletContext]="{ nodes: treeNodes(), parent: tree }"
+          />
+        </ul>
+
+        <ng-template #nodesTpl let-nodes="nodes" let-parent="parent">
+          @for (node of nodes; track node.value) {
+          <li
+            ngTreeItem
+            [parent]="parent"
+            [value]="node.value"
+            [label]="node.name"
+            [(expanded)]="node.expanded"
+            #item="ngTreeItem"
+            (click)="onNodeSelect(node)"
+          >
+            <span class="node-name">{{ node.name }}</span>
+            @if (node.meta) {
+            <span class="node-meta">{{ node.meta }}</span>
+            }
+          </li>
+          @if (node.children) {
+          <ul role="group">
+            <ng-template ngTreeItemGroup [ownedBy]="item" #group="ngTreeItemGroup">
+              <ng-template
+                [ngTemplateOutlet]="nodesTpl"
+                [ngTemplateOutletContext]="{ nodes: node.children, parent: group }"
+              />
+            </ng-template>
+          </ul>
+          }
+          }
+        </ng-template>
+        }
+      </div>
+
+      <div class="preview-panel">
+        @if (previewLoading()) {
+        <div class="panel-status">
+          <div class="spinner"></div>
+          <p>{{ 'contentBrowser.loadingContent' | translate }}</p>
+        </div>
+        } @else if (previewError()) {
+        <div class="panel-status error">
+          <h4>{{ 'contentBrowser.parseErrorTitle' | translate }}</h4>
+          <p>{{ 'contentBrowser.parseErrorDescription' | translate }}</p>
+        </div>
+        } @else if (previewNoContent()) {
+        <div class="panel-status">
+          <img src="/icons/file.svg" alt="" width="32" height="32" style="opacity: 0.3" />
+          <p>{{ 'contentBrowser.noContentForItem' | translate }}</p>
+        </div>
+        } @else if (previewContent() !== null) {
+        <div class="preview-header">
+          <h3>{{ previewFileName() }}</h3>
+          @if (previewTotalChunks() > 0) {
+          <span class="chunk-info">{{ previewTotalChunks() }} {{ 'contentBrowser.chunks' | translate }}</span>
+          }
+          @if (previewExternalUrl()) {
+          <button
+            class="btn-icon open-external"
+            (click)="openExternal()"
+            title="Open in new tab"
+            type="button"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </button>
+          }
+        </div>
+        <pre class="parsed-text">{{ previewContent() }}</pre>
+        } @else {
+        <div class="panel-status">
+          <img src="/icons/scan-preview.svg" alt="" width="32" height="32" style="opacity: 0.3" />
+          <p>{{ 'contentBrowser.selectItem' | translate }}</p>
+        </div>
+        }
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary close" (click)="close.emit()">
+        {{ 'contentBrowser.close' | translate }}
+      </button>
+    </div>
+  </div>
+</div>

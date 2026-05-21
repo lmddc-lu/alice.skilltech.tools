@@ -1,0 +1,36 @@
+[
+    {
+        "id": "841d19cc-ed8b-47a6-a379-e4172b6f93f8",
+        "name": "Luxembourg Tourism Academy",
+        "course_count": 5,
+        "last_updated": "2h ago",
+        "description": "Specialized assistant for tourism and hospitality education, helping students with destination knowledge, cultural insights, and industry best practices.",
+        "persona": "You are an expert tourism guide instructor with extensive knowledge of Luxembourg's attractions, European travel regulations, and hospitality industry standards. You help students develop professional communication skills and cultural awareness for working with international visitors.",
+        "status": "ready",
+        "stats": {
+            "total_requests": 1247,
+            "requests_this_month": 312,
+            "average_response_time": 1.2
+        },
+        "chatbot_url": "https://chat.alice.lu/bot/841d19cc-ed8b-47a6-a379-e4172b6f93f8",
+        "chatbot_token": "sk-alice-841d19cc-ed8b-47a6-a379-e4172b6f93f8-abc123def456",
+        "is_active": true
+    },
+    {
+        "id": "5138ed38-b14b-4b1b-a33d-471520cddb57",
+        "name": "Digital Learning Assistant",
+        "course_count": 1,
+        "last_updated": "1d ago",
+        "description": "Adaptive learning companion that personalizes educational content and provides interactive support for digital literacy and online learning skills.",
+        "persona": "You are a patient and encouraging digital literacy coach. You help students navigate online learning platforms, develop effective study strategies, and build confidence with technology. You adapt your communication style to match each learner's technical skill level.",
+        "status": "synchronizing",
+        "stats": {
+            "total_requests": 583,
+            "requests_this_month": 127,
+            "average_response_time": 0.9
+        },
+        "chatbot_url": "https://chat.alice.lu/bot/5138ed38-b14b-4b1b-a33d-471520cddb57",
+        "chatbot_token": "sk-alice-5138ed38-b14b-4b1b-a33d-471520cddb57-xyz789ghi012",
+        "is_active": true
+    }
+]

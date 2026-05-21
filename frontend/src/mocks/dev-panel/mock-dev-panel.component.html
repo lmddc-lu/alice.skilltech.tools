@@ -1,0 +1,156 @@
+<div class="mock-dev-panel" [class.collapsed]="panelState.collapsed()">
+  <div class="header" (click)="toggleCollapsed()">
+    <span class="title">Mock Dev Panel</span>
+    <span class="hint">Ctrl+Shift+M</span>
+    <button type="button" class="collapse-btn" (click)="toggleCollapsed(); $event.stopPropagation()">
+      {{ panelState.collapsed() ? '▲' : '▼' }}
+    </button>
+  </div>
+
+  @if (!panelState.collapsed()) {
+  <div class="tabs">
+    <button type="button" [class.active]="activeTab() === 'scenario'" (click)="selectTab('scenario')">Scénario</button>
+    <button type="button" [class.active]="activeTab() === 'chatbot'" (click)="selectTab('chatbot')">Chatbot</button>
+    <button type="button" [class.active]="activeTab() === 'features'" (click)="selectTab('features')">Features</button>
+    <button type="button" [class.active]="activeTab() === 'timing'" (click)="selectTab('timing')">Timing</button>
+    <button type="button" [class.active]="activeTab() === 'share'" (click)="selectTab('share')">Share</button>
+    <button type="button" [class.active]="activeTab() === 'auth'" (click)="selectTab('auth')">Auth</button>
+  </div>
+
+  <div class="body">
+    @if (activeTab() === 'scenario') {
+    <div class="row">
+      <label>Scenario</label>
+      <select [ngModel]="panelState.scenario()" (ngModelChange)="onScenarioChange($event)">
+        <option [ngValue]="null">— default —</option>
+        @for (name of scenarios; track name) {
+        <option [ngValue]="name">{{ name }}</option>
+        }
+      </select>
+    </div>
+    <div class="row">
+      <button type="button" (click)="resetStore()">Reset store</button>
+    </div>
+    }
+
+    @if (activeTab() === 'chatbot') {
+    <div class="row">
+      <label>Chatbot</label>
+      <select [ngModel]="selectedState()?.chatbot?.id" (ngModelChange)="onSelectedChatbotChange($event)">
+        @for (s of chatbots(); track s.chatbot.id) {
+        <option [ngValue]="s.chatbot.id">{{ s.chatbot.name }}</option>
+        }
+      </select>
+    </div>
+    <div class="row">
+      <button type="button" (click)="openSelectedInEditor()" [disabled]="!selectedState()">
+        Open in editor
+      </button>
+    </div>
+    @if (selectedState(); as state) {
+    <div class="row">
+      <label>Status</label>
+      <div class="radios">
+        @for (opt of statusOptions; track opt) {
+        <label>
+          <input
+            type="radio"
+            name="status"
+            [value]="opt"
+            [checked]="state.chatbot.status === opt"
+            (change)="onStatusChange(opt)"
+          />
+          {{ opt }}
+        </label>
+        }
+      </div>
+    </div>
+    <div class="row">
+      <label>Progress {{ state.jobProgress.current }} / {{ state.jobProgress.total }}</label>
+      <input
+        type="range"
+        min="0"
+        [max]="state.jobProgress.total || state.files.length || 1"
+        [value]="state.jobProgress.current"
+        (input)="onProgressChange(+$any($event.target).value)"
+      />
+    </div>
+    <div class="row">
+      <button type="button" (click)="tickOnce()">Advance one step</button>
+      <button type="button" (click)="injectErrorOnFirstFile()">Inject error (1st file)</button>
+    </div>
+    }
+    }
+
+    @if (activeTab() === 'features') {
+    @if (selectedState(); as state) {
+    <div class="row">
+      <label>
+        <input
+          type="checkbox"
+          [checked]="state.chatbot.cite_sources"
+          (change)="onFeatureToggle('cite_sources', $any($event.target).checked)"
+        />
+        cite_sources
+      </label>
+    </div>
+    <div class="row">
+      <label>
+        <input
+          type="checkbox"
+          [checked]="state.chatbot.force_ocr"
+          (change)="onFeatureToggle('force_ocr', $any($event.target).checked)"
+        />
+        force_ocr
+      </label>
+    </div>
+    <div class="row">
+      <label>access_level</label>
+      <select
+        [ngModel]="state.chatbot.access_level"
+        (ngModelChange)="onAccessLevelChange($event)"
+      >
+        <option value="public">public</option>
+        <option value="private">private</option>
+        <option value="password">password</option>
+      </select>
+    </div>
+    }
+    }
+
+    @if (activeTab() === 'timing') {
+    <div class="row">
+      <label>
+        <input
+          type="checkbox"
+          [checked]="mockStore.autoAdvance()"
+          (change)="onAutoAdvanceChange($any($event.target).checked)"
+        />
+        Auto-advance job tick
+      </label>
+    </div>
+    }
+
+    @if (activeTab() === 'share') {
+    <div class="row">
+      <button type="button" (click)="copyShareUrl()">
+        {{ copied() ? 'Copied!' : 'Copy URL' }}
+      </button>
+    </div>
+    }
+
+    @if (activeTab() === 'auth') {
+    <div class="row">
+      <label>
+        <input
+          type="checkbox"
+          [checked]="adminMode()"
+          (change)="onAdminToggle($any($event.target).checked)"
+        />
+        Admin mode
+      </label>
+    </div>
+    }
+  </div>
+  }
+</div>

@@ -1,0 +1,95 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.13,<4.0"
+dependencies = [
+    "fastapi[standard]>=0.121.3",
+    "python-multipart>=0.0.7",
+    "bcrypt>=4.1",
+    "passlib[bcrypt]>=1.7.4",  # only used by historical alembic migration
+    "tenacity>=9.1.2",
+    "pydantic>2.0",
+    "jinja2>=3.1.4",
+    "alembic>=1.17.2",
+    "httpx>=0.25.1",
+    "psycopg[binary]>=3.2.13",
+    "sqlmodel>=0.0.27",
+    "pydantic-settings>=2.12.0",
+    "sentry-sdk[fastapi]>=1.40.6",
+    "requests>=2.32.5",
+    "itsdangerous>=2.2.0",
+    "starlette>=0.50.0",
+    "faststream[rabbit]>=0.6",
+    "minio>=7.2.19",
+    "tqdm>=4.67.1",
+    "pyjwt[crypto]>=2.8.0",
+    "cryptography>=46.0.0",
+    "pytz",
+    "apscheduler>=3.11.1",
+    "slowapi>=0.1.9",
+    "prometheus-client>=0.21.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.18.2",
+    "ruff>=0.14.6",
+    "pre-commit>=4.5.0",
+    "types-passlib>=1.7.7.20250602",
+    "coverage>=7.12.0",
+    "types-pytz>=2026.1.1.20260408",
+    "types-requests>=2.33.0.20260408",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+exclude-newer = "10 days"
+
+[tool.mypy]
+strict = true
+exclude = ["venv", ".venv", "alembic"]
+
+[[tool.mypy.overrides]]
+module = ["apscheduler.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py313"
+exclude = ["alembic"]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG001", # unused arguments in functions
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "W191",  # indentation contains tabs
+    "B904",  # Allow raising exceptions without from e, for HTTPException
+]
+
+[tool.ruff.lint.per-file-ignores]
+# request: Request is required by slowapi's @limiter.limit() decorator
+"app/api_v2/routes/*.py" = ["ARG001"]
+
+[tool.ruff.lint.pyupgrade]
+# Preserve types, even if a file imports `from __future__ import annotations`.
+keep-runtime-typing = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

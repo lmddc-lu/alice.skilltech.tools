@@ -1,0 +1,174 @@
+ <div class="page-container">
+  <nav class="breadcrumb-nav">
+    <button class="breadcrumb-link" (click)="goToDashboard()">
+      
+      {{ 'overview.overview-title' | translate }}
+    </button>
+    <span class="breadcrumb-separator">
+      <img src="/icons/icon_chevronRight.svg" alt="">
+    </span>
+    <span class="breadcrumb-current" [innerHTML]="'newChatbot.title' | translate"></span>
+  </nav>
+  
+  <div class="page-header">
+    <h1 class="page-title" [innerHTML]="'newChatbot.title' | translate"></h1>
+    <p class="page-description">
+      {{ 'newChatbot.wizardDescription' | translate }}
+    </p>
+  </div>
+  
+  <div class="wizard-container">
+    <div class="wizard-progress">
+      <div class="progress-steps">
+        @for (step of visibleSteps(); track step.number) {
+          <div
+          class="progress-step"
+          [class.active]="step.number === currentStep()"
+          [class.completed]="step.number < currentStep()"
+          [class.clickable]="step.number <= currentStep()"
+          (click)="goToStep(step.number)"
+          >
+          <div class="step-indicator">
+            @if (step.number < currentStep()) {
+              <img
+              src="/icons/check.svg"
+              alt="Completed"
+              class="completed"
+              width="20"
+              height="18"
+              />
+            }
+            @else {
+              <img
+              [src]="'/icons/steps/' + step.icon"
+              [alt]="step.number"
+              width="24"
+              height="24"
+              />
+            }
+          </div>
+          <span class="step-label">{{ step.label | translate }}</span>
+        </div>
+        @if (step.number < visibleSteps().length) {
+          <div
+          class="progress-connector"
+          [class.completed]="step.number < currentStep()"
+          ></div>
+        } }
+      </div>
+    </div>
+    
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-indicator-badge">
+          <span class="step-number">{{ currentStep() }}</span>
+          <span class="total-steps">/ {{ visibleSteps().length }}</span>
+        </div>
+        <div class="step-info">
+          <h2 class="step-title">{{ stepTitle() | translate }}</h2>
+          <p class="step-description">
+            {{ stepDescription() | translate }}
+          </p>
+        </div>
+      </div>
+      
+      <div class="step-content">
+        
+        @switch (getCurrentStepId()) { @case ('sourceType') {
+          <app-source-type-step
+          [data]="wizardData()"
+          (dataChange)="updateWizardData($event)"
+          />
+        } @case ('basicInfo') {
+          <app-basic-info-step
+          [data]="wizardData()"
+          (dataChange)="updateWizardData($event)"
+          />
+        } @case ('fileUpload') {
+          <div class="source">
+            <app-file-upload-step
+            [data]="wizardData()"
+            (dataChange)="updateWizardData($event)"
+            />
+          </div>
+          
+        } @case ('courseSelection') {
+          <app-course-selection-step
+          [data]="wizardData()"
+          (dataChange)="updateWizardData($event)"
+          />
+        } @case ('configuration') {
+          <app-chatbot-config-step
+          [data]="wizardData()"
+          (dataChange)="updateWizardData($event)"
+          />
+        } @case ('additionalFiles') {
+          <app-file-upload-step
+          [data]="wizardData()"
+          (dataChange)="updateWizardData($event)"
+          />
+        } @case ('review') {
+          <app-review-confirm-step
+          [data]="wizardData()"
+          [isProcessing]="isProcessing()"
+          (confirmedChange)="onReviewConfirmedChange($event)"
+          />
+        } }
+        
+      </div>
+      
+      <div class="step-actions">
+        <div class="actions-left">
+          @if (currentStep() > 1 && !isProcessing()) {
+            <button class="btn btn-secondary" (click)="previousStep()">
+              <img
+              src="/icons/chevron-left.svg"
+              alt="Previous"
+              width="16"
+              height="16"
+              />
+              {{ 'newChatbot.previous' | translate }}
+            </button>
+          }
+        </div>
+        
+        <div class="actions-right">
+          @if (currentStep() < visibleSteps().length) {
+            <button
+            class="btn btn-primary"
+            (click)="nextStep()"
+            [disabled]="!canProceed()"
+            >
+            {{ 'newChatbot.next' | translate }}
+            <img
+            src="/icons/arrow-right.svg"
+            alt="Next"
+            width="16"
+            height="16"
+            />
+          </button>
+        } @else {
+          <button
+          class="btn btn-primary"
+          (click)="submitChatbot()"
+          [disabled]="!canProceed() || isProcessing()"
+          >
+          @if (isProcessing()) {
+            <div class="loading-spinner small"></div>
+            {{ 'newChatbot.creating' | translate }}
+          } @else {
+            {{ 'newChatbot.create' | translate }}
+          <img
+            src="/icons/icon_check.svg"
+            alt="Create"
+            width="16"
+            height="16"
+            />
+          }
+        </button>
+      }
+    </div>
+  </div>
+</div>
+</div>
+</div>
