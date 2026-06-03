@@ -58,7 +58,7 @@ Documentation is available [Here](https://documentation.skilltech.tools/platform
 
 ## License
 
-This project is licensed under the GNU AFFERO GENERAL PUBLIC LICENSE Version 3, 19 November 2007, you may obtain the source code on [Github](). Please check the CREDITS.md file at the root of the repository for more details about the licences and contributors.
+This project is licensed under the GNU AFFERO GENERAL PUBLIC LICENSE Version 3, 19 November 2007, you may obtain the source code on [Github](https://github.com/lmddc-lu/alice.skilltech.tools/). Please check the CREDITS.md file at the root of the repository for more details about the licences and contributors.
 
 ---
 
