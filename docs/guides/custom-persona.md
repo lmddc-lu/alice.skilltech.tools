@@ -11,6 +11,9 @@ Alice comes with two ready-made personas:
 
 A custom persona gives you full control over the assistant's character. If neither of the presets fits your use case (for example, you want a different tone, a different grounding policy, or specific boundaries), the custom option lets you tailor every aspect of how the assistant responds.
 
+![Chatbot editor showing the persona options and custom persona text](../images/chatbot-editor.png)
+*Pick a preset persona, or select **Custom** to write your own description in the text area below.*
+
 ## What to include in a custom persona
 
 A well-written custom persona answers four questions. The first two shape *who* the assistant is, the third controls *how* it uses your materials, and the fourth sets *boundaries*.

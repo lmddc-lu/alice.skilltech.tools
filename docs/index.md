@@ -15,6 +15,12 @@ share the chatbot via a URL (public, password-protected, or SSO-only).
 **Learners** open the URL and chat. Each answer is grounded in the
 knowledge base and returned with citations to the source documents.
 
+![Educator dashboard listing chatbots](images/my-chatbots.png)
+*Educators manage all their chatbots from a single dashboard.*
+
+![Learner chat interface with cited answers](images/chat-interface.png)
+*Learners chat with the bot and get answers grounded in the course materials, with citations.*
+
 ## Guides
 
 - [How to install and run Alice](guides/installation.md)

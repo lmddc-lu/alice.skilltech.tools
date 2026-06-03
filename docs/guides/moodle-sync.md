@@ -26,5 +26,6 @@
 You are now ready to try your newly created token.
 
 1. Go to [alice.skilltech.tools](https://alice.skilltech.tools/) and create a new chatbot of type **Moodle Integration**.
+
 2. In the first step, choose a name and description for your chatbot, enter the URL of your Moodle instance (for example, `https://my.moodle.org`), then paste your token. Click **Verify connection**.
 3. If the connection verification succeeds, you are good to go. In the next step, you will see your Moodle instance's courses.
