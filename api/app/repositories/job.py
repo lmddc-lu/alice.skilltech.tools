@@ -13,6 +13,7 @@ from app.core.metrics import (
     JOB_TOTAL_DURATION_SECONDS,
     JOBS_COMPLETED,
     JOBS_ENQUEUED,
+    KNOWN_ERROR_KINDS,
     classify_error_kind,
 )
 from app.models.enums import (
@@ -132,8 +133,13 @@ class JobRepository(BaseRepository[Job]):
         job_id: UUID,
         error_message: str,
         error_details: str | None = None,
+        error_kind: str | None = None,
     ) -> Job | None:
-        """Mark a job as failed. Skips if already cancelled."""
+        """Mark a job as failed. Skips if already cancelled.
+
+        error_kind is the worker-declared failure bucket; unknown or
+        missing values fall back to classifying the error message.
+        """
         job = self.get(job_id)
         if not job:
             return None
@@ -159,9 +165,9 @@ class JobRepository(BaseRepository[Job]):
         JOB_TOTAL_DURATION_SECONDS.labels(
             job_type=job.job_type, status=JobStatus.FAILED.value
         ).observe(_job_age_seconds(job, now))
-        JOB_FAILURES.labels(
-            job_type=job.job_type, error_kind=classify_error_kind(error_message)
-        ).inc()
+        if error_kind not in KNOWN_ERROR_KINDS:
+            error_kind = classify_error_kind(error_message)
+        JOB_FAILURES.labels(job_type=job.job_type, error_kind=error_kind).inc()
         return job
 
     # weights for weighted progress. terminal states are 1.0. INGESTING
@@ -560,7 +566,13 @@ class JobRepository(BaseRepository[Job]):
         return list(self.session.exec(statement))
 
     def cleanup_old_jobs(self, days: int = 30) -> int:
-        """Delete completed/failed jobs older than N days."""
+        """Delete completed/failed jobs older than N days, with their children.
+
+        Only terminal jobs (COMPLETED/FAILED) are eligible, active jobs are
+        never reaped regardless of age. ``jobfile``/``jobevent`` FKs have no
+        ON DELETE CASCADE, so the children must be deleted before the parent
+        or Postgres raises a ForeignKeyViolation.
+        """
         cutoff = datetime.now(UTC) - timedelta(days=days)
 
         statement = select(Job).where(
@@ -568,9 +580,20 @@ class JobRepository(BaseRepository[Job]):
             col(Job.status).in_([JobStatus.COMPLETED.value, JobStatus.FAILED.value]),
         )
         old_jobs = list(self.session.exec(statement))
+        if not old_jobs:
+            return 0
+
+        job_ids = [job.id for job in old_jobs]
+
+        for child in (JobFile, JobEvent):
+            for row in self.session.exec(
+                select(child).where(col(child.job_id).in_(job_ids))
+            ).all():
+                self.session.delete(row)
+        # children gone before the parents to satisfy the FK
+        self.session.flush()
 
         for job in old_jobs:
-            # events cascade
             self.session.delete(job)
 
         self.session.commit()

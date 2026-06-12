@@ -47,6 +47,7 @@ import {
         [promptSuggestions]="chatbotData()!.prompt_suggestions || []"
         [avatarUrl]="chatbotData()!.avatar_url"
         [persistSession]="chatbotData()!.persist_session"
+        [citationTarget]="citationTarget()"
       />
       }
     </div>
@@ -64,6 +65,9 @@ export class ChatComponent implements OnInit {
   chatbotName = signal<string>('');
   chatbotData = signal<ChatbotPublicInfo | null>(null);
   chatbotPassword = signal<string | null>(null);
+  // '?embedded=true' makes citation links break out of the iframe to the host
+  // page; otherwise they open in a new tab.
+  citationTarget = signal<string>('_blank');
 
   accessDialogType = signal<AccessDialogType>('loading');
   errorMessage = signal<string | null>(null);
@@ -78,6 +82,10 @@ export class ChatComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    if (this.route.snapshot.queryParamMap.get('embedded') === 'true') {
+      this.citationTarget.set('_parent');
+    }
+
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       this.chatbotId.set(id);

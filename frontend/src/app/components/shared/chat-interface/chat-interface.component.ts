@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { TranslatePipe } from '@ngx-translate/core';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { environment } from '../../../../environments/environment';
 import { MarkdownComponent } from 'ngx-markdown';
 import { ChatbotPersonaType } from '../../../interfaces/chatbot-i';
@@ -110,7 +110,7 @@ interface ChatMessage {
                 <a
                   class="citation-item"
                   [href]="getCitationUrl(group)"
-                  target="_blank"
+                  [attr.target]="citationTarget()"
                   rel="noopener"
                   [title]="group.file_name | mlang"
                 >
@@ -150,6 +150,21 @@ interface ChatMessage {
         }
       </div>
 
+      @if (piiFiltered() && !piiWarningDismissed()) {
+      <div class="pii-warning" role="status">
+        <span class="pii-warning-icon" aria-hidden="true"></span>
+        <span class="pii-warning-text">{{ 'chat.piiFilterWarning' | translate }}</span>
+        <button
+          type="button"
+          class="pii-warning-dismiss"
+          (click)="dismissPiiWarning()"
+          [attr.aria-label]="'chat.dismiss' | translate"
+        >
+          ✕
+        </button>
+      </div>
+      }
+
       <div class="chat-input-container" [class.focus]="isInputFocused()">
         <div class="chat-input-wrapper">
           <textarea
@@ -159,7 +174,6 @@ interface ChatMessage {
             (focus)="isInputFocused.set(true)"
             (blur)="isInputFocused.set(false)"
             [placeholder]="'chat.typeMessage' | translate"
-            [disabled]="isLoading()"
             rows="1"
           ></textarea>
           <button
@@ -188,6 +202,7 @@ interface ChatMessage {
 })
 export class ChatInterfaceComponent {
   private cdr = inject(ChangeDetectorRef);
+  private translate = inject(TranslateService);
   @ViewChild('messagesContainer') private messagesContainer!: ElementRef;
 
   // Bumps when the on-disk message schema changes, discard older payloads.
@@ -237,6 +252,8 @@ export class ChatInterfaceComponent {
         timestamp: new Date(m.timestamp),
       }));
       this.messages.set(revived);
+      // Jump to the latest message after restoring history on reload.
+      this.scrollToBottom('auto');
     } catch (err) {
       console.warn('Failed to load chat history:', err);
     }
@@ -261,6 +278,8 @@ export class ChatInterfaceComponent {
   onClearMessages(): void {
     this.messages.set([]);
     this.currentAssistantMessageId = null;
+    this.piiFiltered.set(false);
+    this.piiWarningDismissed.set(false);
     try {
       localStorage.removeItem(this.storageKey(this.chatbotId()));
     } catch (err) {
@@ -278,6 +297,9 @@ export class ChatInterfaceComponent {
   avatarUrl = input<string | null>(null);
   // When false, conversation is in-memory only and wiped on reload.
   persistSession = input<boolean>(false);
+  // Where citation links open. '_parent' breaks out of an iframe to the host
+  // page; '_blank' (default) opens a new tab.
+  citationTarget = input<string>('_blank');
 
   private personaAvatarUrl = computed(() => {
     switch (this.personaType()) {
@@ -304,6 +326,10 @@ export class ChatInterfaceComponent {
   userInput = signal<string>('');
   isLoading = signal<boolean>(false);
   isInputFocused = signal<boolean>(false);
+  // True once the PII filter has actually stripped personal data from a message
+  // in this conversation; drives the "don't share personal info" warning.
+  piiFiltered = signal<boolean>(false);
+  piiWarningDismissed = signal<boolean>(false);
 
   private currentAssistantMessageId: string | null = null;
 
@@ -381,7 +407,7 @@ export class ChatInterfaceComponent {
     return this.getPreviewUrlByFileId(group.file_id);
   }
 
-  private scrollToBottom(): void {
+  private scrollToBottom(behavior: ScrollBehavior = 'smooth'): void {
     this.cdr.detectChanges();
     requestAnimationFrame(() => {
       try {
@@ -389,7 +415,7 @@ export class ChatInterfaceComponent {
         if (container) {
           container.scrollTo({
             top: container.scrollHeight,
-            behavior: 'smooth',
+            behavior,
           });
         }
       } catch (err) {
@@ -471,6 +497,11 @@ export class ChatInterfaceComponent {
             try {
               const parsed = JSON.parse(data);
 
+              if (parsed.pii_filtered) {
+                this.piiFiltered.set(true);
+                continue;
+              }
+
               if (parsed.citations) {
                 this.setCitationsOnAssistantMessage(parsed.citations);
                 this.scrollToBottom();
@@ -496,7 +527,7 @@ export class ChatInterfaceComponent {
       console.error('Error streaming chat response:', error);
       if (this.currentAssistantMessageId) {
         this.updateAssistantMessage(
-          'Sorry, there was an error processing your request. Please try again.'
+          this.translate.instant('chat.errorProcessing')
         );
       }
       this.isLoading.set(false);
@@ -564,6 +595,10 @@ export class ChatInterfaceComponent {
       };
       this.messages.update((msgs) => [...msgs, assistantMessage]);
     }
+  }
+
+  dismissPiiWarning(): void {
+    this.piiWarningDismissed.set(true);
   }
 
   handleKeyPress(event: KeyboardEvent): void {

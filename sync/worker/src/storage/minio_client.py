@@ -81,3 +81,6 @@ class MinioStorage:
         return self.client.list_objects(
             bucket_name=bucket, prefix=prefix, recursive=True
         )
+
+    def remove_object(self, bucket: str, object_name: str) -> None:
+        self.client.remove_object(bucket_name=bucket, object_name=object_name)

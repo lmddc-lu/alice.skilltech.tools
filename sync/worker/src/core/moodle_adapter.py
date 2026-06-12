@@ -253,7 +253,7 @@ class MoodleSourceAdapter(SourceAdapter):
     def sync_content(self, message: dict, selected_files: list, force: bool) -> int:
         """Download selected Moodle files to S3.
 
-        selected_files mixes `course:<id>` and `<activity_id>:<file_id>` keys.
+        selected_files contains `course:<id>` keys.
         """
         moodle_domain = message.get("moodle_domain")
         moodle_token = message.get("moodle_token")
@@ -277,13 +277,13 @@ class MoodleSourceAdapter(SourceAdapter):
         )
 
         course_selections = [s for s in selected_files if s.startswith("course:")]
-        file_selections = [
-            s for s in selected_files if ":" in s and not s.startswith("course:")
-        ]
-        logger.info(
-            f"Processing {len(course_selections)} courses and "
-            f"{len(file_selections)} individual files"
-        )
+        ignored = [s for s in selected_files if not s.startswith("course:")]
+        if ignored:
+            logger.warning(
+                f"Ignoring {len(ignored)} non-course selection(s); "
+                f"individual-file selection is not supported: {ignored}"
+            )
+        logger.info(f"Processing {len(course_selections)} courses")
 
         files_downloaded = 0
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -291,7 +291,9 @@ class MoodleSourceAdapter(SourceAdapter):
 
             for course_selection in course_selections:
                 course_id = course_selection.split(":")[1]
-                downloaded = self._download_entire_course(
+                # index pruning is wired through ensure_content (which has the
+                # vector-store client); sync_content only refreshes storage
+                downloaded, _ = self._download_entire_course(
                     client,
                     course_id,
                     temp_dir_path,
@@ -301,26 +303,6 @@ class MoodleSourceAdapter(SourceAdapter):
                 )
                 files_downloaded += downloaded
                 logger.info(f"Downloaded {downloaded} files from course {course_id}")
-
-            for file_selection in file_selections:
-                parts = file_selection.split(":")
-                if len(parts) != 2:
-                    logger.warning(f"Invalid selection format: {file_selection}")
-                    continue
-                activity_id, file_id = parts
-                if self._download_specific_file(
-                    client,
-                    activity_id,
-                    file_id,
-                    temp_dir_path,
-                    datasource_id,
-                    owner_email,
-                    moodle_domain,
-                ):
-                    files_downloaded += 1
-                    logger.info(
-                        f"Downloaded file {file_id} from activity {activity_id}"
-                    )
 
         logger.info(
             f"Content sync completed. Total files downloaded: {files_downloaded}"
@@ -517,14 +499,20 @@ class MoodleSourceAdapter(SourceAdapter):
         datasource_id: str,
         owner_email: str,
         moodle_domain: str,
-    ) -> int:
-        """Download all files from a course and upload the manifest."""
+    ) -> tuple[int, list[dict]]:
+        """Download all files from a course and upload the manifest.
+
+        Returns (files_downloaded, pruned), where pruned is a list of
+        {"file_id", "basename"} records for stale objects removed from
+        storage, so the caller can delete the matching documents from the
+        vector index by stable file_id where known, basename otherwise.
+        """
         try:
             response = client.export_course(int(course_id))
             course = response.get("course")
             if not course:
                 logger.error(f"Course {course_id} not found")
-                return 0
+                return 0, []
 
             logger.info(f"Downloading course: {course['fullname']} (ID: {course_id})")
             course_name = course.get("fullname", "Unknown Course")
@@ -534,6 +522,11 @@ class MoodleSourceAdapter(SourceAdapter):
             # for both attached files and extracted text content
             domain_clean = _clean_moodle_domain(moodle_domain)
             base_path = get_datasource_path(owner_email, datasource_id)
+            course_path = f"{base_path}/moodle/{domain_clean}/course_{course_id}"
+            # snapshot the existing manifest before it's overwritten so we can
+            # recover the stable file_id of any object we prune (used for
+            # rename-proof index deletion)
+            old_manifest = self._load_text_content_manifest(course_path)
             manifest: dict = {}
 
             for section in course.get("sections", []):
@@ -642,105 +635,85 @@ class MoodleSourceAdapter(SourceAdapter):
                     f"course {course_id}"
                 )
 
-            return files_downloaded
+            # Reconcile storage against the live course export: objects that
+            # are no longer part of the course (a file removed or replaced
+            # upstream) are stale leftovers that would otherwise be re-ingested
+            # with no manifest metadata. The expected set is built from the
+            # export itself, not the download-gated manifest, so a file that
+            # merely failed to download this run stays expected and is kept.
+            expected_basenames = {item["storage_filename"] for item in text_items}
+            for section in course.get("sections", []):
+                for activity in section.get("activities", []):
+                    for file_info in activity.get("files", []):
+                        file_id = str(file_info["id"])
+                        filename = file_info["filename"]
+                        expected_basenames.add(f"file_{file_id}_{filename}")
+            pruned_basenames = self._prune_stale_course_objects(
+                course_path, expected_basenames
+            )
+            # carry each pruned object's stable file_id (recovered from the
+            # pre-sync manifest) so the index delete can match on it instead of
+            # the filename, which a converter may have changed
+            pruned = [
+                {
+                    "file_id": old_manifest.get(basename, {}).get("file_id"),
+                    "basename": basename,
+                }
+                for basename in pruned_basenames
+            ]
+
+            return files_downloaded, pruned
         except (MoodleAuthenticationError, MoodleConnectionError):
             raise
         except Exception as e:
             logger.error(f"Error downloading course {course_id}: {e}")
             raise MoodleConnectionError(f"Error during course download: {e}")
 
-    def _download_specific_file(
-        self,
-        client: MoodleExportClient,
-        activity_id: str,
-        file_id: str,
-        temp_dir: Path,
-        datasource_id: str,
-        owner_email: str,
-        moodle_domain: str,
-    ) -> bool:
-        """Download a single file by IDs."""
+    def _prune_stale_course_objects(
+        self, course_path: str, expected_basenames: set[str]
+    ) -> list[str]:
+        """Delete storage objects under course_path no longer in the course.
+
+        Returns the basenames that were pruned, so the caller can delete the
+        matching documents from the vector index too. expected_basenames is
+        derived from the live Moodle export, so only files genuinely
+        removed/replaced upstream are pruned; the manifest is always kept. Only
+        reached after a successful export, so an empty expected set means the
+        course was genuinely emptied upstream — its stale objects are still
+        pruned (logged at warning so a mass delete stays visible).
+        """
         try:
-            file_info, course_info, section_info = self._find_file_by_ids(
-                client, activity_id, file_id
+            objects = list(
+                self.storage.list_objects(self.config.bucket_name, course_path)
             )
-            if not file_info:
-                logger.error(
-                    f"File not found: activity_id={activity_id}, file_id={file_id}"
-                )
-                return False
+        except Exception as e:
+            logger.warning(f"Could not list {course_path} for pruning: {e}")
+            return []
 
-            filename = file_info["filename"]
-            local_file_path = temp_dir / f"{file_id}_{filename}"
+        if not expected_basenames and objects:
+            logger.warning(
+                f"Course at {course_path} has no current files in the export; "
+                f"pruning all stale objects"
+            )
 
+        pruned: list[str] = []
+        for obj in objects:
+            obj_name = str(obj.object_name)
+            basename = Path(obj_name).name
+            if (
+                basename == "text_content_manifest.json"
+                or basename in expected_basenames
+            ):
+                continue
             try:
-                downloaded = client.download_file(
-                    file_info["download_url"], local_file_path, show_progress=False
-                )
-            except MoodleAccessException as e:
-                logger.warning(
-                    "Access denied for file %s:%s — %s", activity_id, file_id, e
-                )
-                return False
-
-            if downloaded:
-                storage_path = self._course_file_storage_path(
-                    owner_email,
-                    datasource_id,
-                    moodle_domain,
-                    course_info["id"],
-                    section_info.get("section_number", 0),
-                    activity_id,
-                    file_id,
-                    filename,
-                )
-                self._upload_file_to_storage(local_file_path, storage_path)
-                local_file_path.unlink()
-                return True
-            return False
-        except (MoodleAuthenticationError, MoodleConnectionError):
-            raise
-        except Exception as e:
-            logger.error(f"Error downloading file {activity_id}:{file_id}: {e}")
-            raise MoodleConnectionError(f"Error during file download: {e}")
-
-    def _find_file_by_ids(
-        self, client: MoodleExportClient, activity_id: str, file_id: str
-    ) -> tuple[dict | None, dict | None, dict | None]:
-        """Search the full export for the given activity_id:file_id pair."""
-        try:
-            logger.info(
-                f"Searching for file: activity_id={activity_id}, file_id={file_id}"
-            )
-            offset = 0
-            limit = 50
-
-            while True:
-                response = client.export_all_courses(
-                    include_hidden=True,
-                    include_non_enrolled=True,
-                    offset=offset,
-                    limit=limit,
-                )
-                for course in response.get("courses", []):
-                    for section in course.get("sections", []):
-                        for activity in section.get("activities", []):
-                            if str(activity["id"]) == str(activity_id):
-                                for file_info in activity.get("files", []):
-                                    if str(file_info["id"]) == str(file_id):
-                                        return file_info, course, section
-
-                pagination = response.get("pagination", {})
-                if not pagination.get("has_more", False):
-                    break
-                offset = pagination.get("next_offset", offset + limit)
-
-            return None, None, None
-        except (MoodleAuthenticationError, MoodleConnectionError):
-            raise
-        except Exception as e:
-            logger.error(f"Error finding file by IDs: {e}")
-            raise MoodleConnectionError(f"Error during file search: {e}")
+                self.storage.remove_object(self.config.bucket_name, obj_name)
+                pruned.append(basename)
+                logger.info(f"Pruned stale course object: {obj_name}")
+            except Exception as e:
+                logger.warning(f"Failed to prune {obj_name}: {e}")
+        if pruned:
+            logger.info(f"Pruned {len(pruned)} stale object(s) under {course_path}")
+        return pruned
 
     def _course_file_storage_path(
         self,
@@ -784,8 +757,14 @@ class MoodleSourceAdapter(SourceAdapter):
         owner_email: str,
         selected_files: list[str],
         force: bool,
-    ) -> int:
-        """Download anything in selected_files that's not already in storage."""
+    ) -> tuple[int, list[dict]]:
+        """Download anything in selected_files that's not already in storage.
+
+        Returns (files_downloaded, pruned). pruned is a list of
+        {"file_id", "basename"} records for stale objects removed from
+        storage during the course refresh; the caller deletes the matching
+        documents from the vector index.
+        """
         moodle_domain = datasource.get("moodle_domain")
         moodle_token = datasource.get("moodle_token")
         datasource_id = datasource["datasource_id"]
@@ -802,36 +781,32 @@ class MoodleSourceAdapter(SourceAdapter):
         )
 
         files_downloaded = 0
+        pruned_records: list[dict] = []
         missing_files: list[str] = []
 
         for selection in selected_files:
             if selection.startswith("course:"):
-                course_missing = self._get_missing_course_files_with_api(
+                course_missing = self._course_needs_reconcile(
                     client, datasource_id, owner_email, selection, moodle_domain, force
                 )
                 missing_files.extend(course_missing)
-            elif ":" in selection:
-                if self._is_file_missing(
-                    datasource_id, owner_email, selection, moodle_domain, force
-                ):
-                    missing_files.append(selection)
+            else:
+                logger.warning(
+                    f"Ignoring unsupported non-course selection: {selection}"
+                )
 
         if not missing_files:
             logger.info("All selected content is already available")
-            return 0
+            return 0, []
 
         logger.info(f"Found {len(missing_files)} missing files to download")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir_path = Path(temp_dir)
-            course_selections = [f for f in missing_files if f.startswith("course:")]
-            file_selections = [
-                f for f in missing_files if ":" in f and not f.startswith("course:")
-            ]
 
-            for course_selection in course_selections:
+            for course_selection in missing_files:
                 course_id = course_selection.split(":")[1]
-                downloaded = self._download_entire_course(
+                downloaded, pruned = self._download_entire_course(
                     client,
                     course_id,
                     temp_dir_path,
@@ -840,26 +815,11 @@ class MoodleSourceAdapter(SourceAdapter):
                     moodle_domain,
                 )
                 files_downloaded += downloaded
+                pruned_records.extend(pruned)
 
-            for file_selection in file_selections:
-                parts = file_selection.split(":")
-                if len(parts) != 2:
-                    continue
-                activity_id, file_id = parts
-                if self._download_specific_file(
-                    client,
-                    activity_id,
-                    file_id,
-                    temp_dir_path,
-                    datasource_id,
-                    owner_email,
-                    moodle_domain,
-                ):
-                    files_downloaded += 1
+        return files_downloaded, pruned_records
 
-        return files_downloaded
-
-    def _get_missing_course_files_with_api(
+    def _course_needs_reconcile(
         self,
         client: MoodleExportClient,
         datasource_id: str,
@@ -868,7 +828,14 @@ class MoodleSourceAdapter(SourceAdapter):
         moodle_domain: str,
         force: bool,
     ) -> list[str]:
-        """Return [course_selection] iff any file in the course is missing."""
+        """Return [course_selection] when storage diverges from the export.
+
+        Triggers a re-download (which rebuilds the manifest and prunes stale
+        objects) when files are missing from storage OR when storage still
+        holds files that no longer exist in the course — i.e. deleted or
+        replaced upstream. Without the stale check a deletion would never be
+        reconciled, leaving the orphaned object and its citation behind.
+        """
         if force:
             return [course_selection]
 
@@ -884,9 +851,6 @@ class MoodleSourceAdapter(SourceAdapter):
                 for activity in section.get("activities", []):
                     for file_info in activity.get("files", []):
                         expected_file_ids.add(str(file_info["id"]))
-
-            if not expected_file_ids:
-                return []
 
             domain_clean = _clean_moodle_domain(moodle_domain)
             base_path = get_datasource_path(owner_email, datasource_id)
@@ -906,11 +870,12 @@ class MoodleSourceAdapter(SourceAdapter):
             except Exception as e:
                 logger.debug(f"Error listing storage for course {course_id}: {e}")
 
-            missing_count = len(expected_file_ids - actual_file_ids)
-            if missing_count > 0:
+            missing = expected_file_ids - actual_file_ids
+            stale = actual_file_ids - expected_file_ids
+            if missing or stale:
                 logger.info(
-                    f"Course {course_id}: {missing_count}/"
-                    f"{len(expected_file_ids)} files missing"
+                    f"Course {course_id} needs reconcile: "
+                    f"{len(missing)} missing, {len(stale)} stale file(s)"
                 )
                 return [course_selection]
             return []
@@ -919,36 +884,6 @@ class MoodleSourceAdapter(SourceAdapter):
         except Exception as e:
             logger.warning(f"Error checking course {course_id}, will re-download: {e}")
             return [course_selection]
-
-    def _is_file_missing(
-        self,
-        datasource_id: str,
-        owner_email: str,
-        file_selection: str,
-        moodle_domain: str,
-        force: bool,
-    ) -> bool:
-        """True iff activity_id:file_id has no matching object in storage."""
-        if force:
-            return True
-
-        activity_id, file_id = file_selection.split(":")
-        domain_clean = _clean_moodle_domain(moodle_domain)
-        base_path = get_datasource_path(owner_email, datasource_id)
-        search_path = f"{base_path}/moodle/{domain_clean}"
-
-        try:
-            for obj in self.storage.list_objects(self.config.bucket_name, search_path):
-                obj_name = str(obj.object_name)
-                if (
-                    f"activity_{activity_id}" in obj_name
-                    and f"file_{file_id}_" in obj_name
-                ):
-                    return False
-            return True
-        except Exception as e:
-            logger.info(f"Error checking file {file_selection}, assuming missing: {e}")
-            return True
 
     def collect_files(self, datasource: dict, owner_email: str) -> list[dict]:
         """Enumerate files for ingestion under this Moodle datasource.
@@ -973,9 +908,9 @@ class MoodleSourceAdapter(SourceAdapter):
                 objects.extend(
                     self._collect_course_files(base_path, domain_clean, selection)
                 )
-            elif ":" in selection:
-                objects.extend(
-                    self._collect_specific_file(base_path, domain_clean, selection)
+            else:
+                logger.warning(
+                    f"Ignoring unsupported non-course selection: {selection}"
                 )
         return objects
 
@@ -986,7 +921,17 @@ class MoodleSourceAdapter(SourceAdapter):
         course_path = f"{base_path}/moodle/{domain_clean}/course_{course_id}"
         manifest = self._load_text_content_manifest(course_path)
 
+        # The manifest is rebuilt from the course's *current* files on every
+        # sync, so when present it is the authoritative set. Objects left in
+        # storage but absent from it are stale leftovers from a prior sync
+        # (a file replaced or removed upstream); re-ingesting them would
+        # surface citations with no file_id/source_url. Only fall back to
+        # ingesting everything unenriched when no manifest is available
+        # (first sync, or a course with no text content).
+        enforce_manifest = bool(manifest)
+
         objects: list[dict] = []
+        skipped_stale = 0
         try:
             for obj in self.storage.list_objects(self.config.bucket_name, course_path):
                 obj_name = str(obj.object_name)
@@ -995,13 +940,21 @@ class MoodleSourceAdapter(SourceAdapter):
                 if obj_basename == "text_content_manifest.json":
                     continue
 
+                in_manifest = obj_basename in manifest
+                if enforce_manifest and not in_manifest:
+                    skipped_stale += 1
+                    logger.info(
+                        f"Skipping stale object absent from manifest: {obj_basename}"
+                    )
+                    continue
+
                 entry: dict = {
                     "path": Path(obj_name),
                     "filename": obj_basename,
                     "mime_type": None,
                 }
 
-                if obj_basename in manifest:
+                if in_manifest:
                     meta = manifest[obj_basename]
                     entry["filename"] = meta.get("filename", obj_basename)
                     entry["source_url"] = meta.get("source_url")
@@ -1010,37 +963,13 @@ class MoodleSourceAdapter(SourceAdapter):
                         entry["mime_type"] = "text/html"
 
                 objects.append(entry)
-            logger.info(f"Found {len(objects)} files for course {course_id}")
+            logger.info(
+                f"Found {len(objects)} files for course {course_id} "
+                f"({skipped_stale} stale object(s) skipped)"
+            )
         except Exception as e:
             logger.error(f"Error listing course {course_id} files: {e}")
         return objects
-
-    def _collect_specific_file(
-        self, base_path: str, domain_clean: str, selection: str
-    ) -> list[dict]:
-        # TODO: enrich from the course's text_content_manifest.json
-        # (filename, source_url, file_id) once individual-file granularity
-        # is wired up in the UI. Otherwise citations show the raw
-        # file_<id>_<name> basename with no clickable source URL.
-        activity_id, file_id = selection.split(":")
-        search_path = f"{base_path}/moodle/{domain_clean}"
-        try:
-            for obj in self.storage.list_objects(self.config.bucket_name, search_path):
-                obj_name = str(obj.object_name)
-                if (
-                    f"activity_{activity_id}" in obj_name
-                    and f"file_{file_id}_" in obj_name
-                ):
-                    return [
-                        {
-                            "path": Path(obj_name),
-                            "filename": Path(obj_name).name,
-                            "mime_type": None,
-                        }
-                    ]
-        except Exception as e:
-            logger.error(f"Error finding file {selection}: {e}")
-        return []
 
     def _load_text_content_manifest(self, course_path: str) -> dict:
         """Load the per-course manifest mapping S3 basenames to metadata.

@@ -6716,6 +6716,7 @@ app-chat-access-dialog {
       border-top-color: #ffbc15;
       border-radius: 50%;
       animation: spin 1s linear infinite;
+      margin: 0;
     }
   }
   
@@ -7122,7 +7123,7 @@ CHAT PAGE
     
     .message {
       display: flex;
-      gap: 2rem;
+      gap: .5rem;
       animation: fadeIn 0.3s ease-in;
       
       .message-avatar {
@@ -7493,6 +7494,52 @@ p.disclaimer{
   color: rgba(0, 0, 0, 0.5);
   text-align: center;
 }
+
+.pii-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 8px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(180, 130, 0, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 196, 0, 0.12);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: rgba(90, 65, 0, 0.95);
+
+  .pii-warning-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    opacity: 0.8;
+    background-color: currentColor;
+    mask: url('/icons/icon_lock.svg') no-repeat center / contain;
+    -webkit-mask: url('/icons/icon_lock.svg') no-repeat center / contain;
+  }
+
+  .pii-warning-text {
+    flex: 1;
+  }
+
+  .pii-warning-dismiss {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 0.85rem;
+    line-height: 1;
+    color: inherit;
+    opacity: 0.6;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
 // Animations
 @keyframes fadeIn {
   from {
@@ -8056,5 +8103,22 @@ RESPONSIVE DESIGN
   
   .field-display .field-value {
     word-break: break-word;
+  }
+}
+
+// Shared style for "view documentation" links so they look the same everywhere:
+// a small yellow text link with a trailing external-link icon (not a button).
+.doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--primary-color);
+  text-decoration: none;
+  width: fit-content;
+
+  &:hover {
+    text-decoration: underline;
   }
 }

@@ -3,8 +3,9 @@
 Exposes a /metrics HTTP endpoint on a dedicated port (default 9100) and
 provides counters/histograms covering job lifecycle, per-file outcomes,
 Haystack calls, and broker reconnects. Prefer counters and histograms
-over gauges: with prefetch=1 and persistent consumers, queue depth at
-the broker is ~0 at scrape time, so gauge-based views miss everything.
+over gauges: workers claim and ack messages as soon as they are free, so
+queue depth at the broker is ~0 at scrape time and gauge-based views
+miss everything.
 """
 
 from __future__ import annotations

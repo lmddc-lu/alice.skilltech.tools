@@ -94,12 +94,24 @@ class JobFileErrorCode(StrEnum):
 
     Lets the UI pick a translated message without string-matching on
     ``error_message``. NULL when the worker can't classify the failure,
-    UI falls back to ``error_message``.
+    UI falls back to ``error_message``. Codes are stage-specific so a
+    failed file tells you where in the pipeline it died.
+
+    Mirrored by JobFileErrorCode in sync/worker/src/worker.py; values are
+    the wire protocol.
     """
 
     # ingestion succeeded but produced zero chunks (image-only PDF without
     # OCR, scanned page, empty doc)
     EMPTY_CONTENT = "empty_content"
+    # worker could not fetch the file from object storage
+    DOWNLOAD_FAILED = "download_failed"
+    # H5P/SCORM preprocessing failed or produced no output
+    PROCESSOR_FAILED = "processor_failed"
+    # rag-pipeline reported failure or the call raised
+    INGESTION_FAILED = "ingestion_failed"
+    # rag-pipeline went stale or exceeded the absolute time budget
+    INGESTION_TIMEOUT = "ingestion_timeout"
 
 
 # terminal states for progress tallies

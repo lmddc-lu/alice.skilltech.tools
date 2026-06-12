@@ -302,11 +302,15 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
         force_ocr: bool = False,
         action: str = "submit",
         job_id: str | None = None,
+        client_job_id: str | None = None,
     ) -> dict[str, Any]:
         """Run the ingestion pipeline.
 
         :param action: "submit", "status", or "result".
         :param file_metadata: JSON string of per-file metadata.
+        :param client_job_id: the calling platform's job id, logged and kept
+            in job metadata so this run can be correlated with the caller's
+            job from either side.
         """
         if action == "status":
             if not job_id:
@@ -366,7 +370,13 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
                 metadata={
                     "file_count": len(valid_paths),
                     "index_name": index_name or self._default_index,
+                    "client_job_id": client_job_id,
                 }
+            )
+            logger.info(
+                f"[Job {new_job_id}] Submitted: {len(valid_paths)} file(s), "
+                f"index={index_name or self._default_index}, "
+                f"client_job_id={client_job_id}"
             )
 
             thread = threading.Thread(

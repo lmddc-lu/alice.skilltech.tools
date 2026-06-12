@@ -35,6 +35,6 @@ class NextCloudSourceAdapter(SourceAdapter):
         owner_email: str,
         selected_files: list,
         force: bool,
-    ) -> int:
+    ) -> tuple[int, list[str]]:
         logger.warning("NextCloud auto-download not yet implemented")
-        return 0
+        return 0, []

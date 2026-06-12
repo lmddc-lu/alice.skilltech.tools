@@ -117,9 +117,14 @@ class Settings(BaseSettings):
     JOB_RUNNING_STALE_MINUTES: int = 30
     JOB_RUNNING_ABSOLUTE_MINUTES: int = 360
     JOB_PENDING_TIMEOUT_MINUTES: int = 120
+    # terminal jobs (and their job files/events) older than this are pruned
+    # by the daily retention sweep. <= 0 disables the sweep.
+    JOB_RETENTION_DAYS: int = 60
 
     HAYSTACK_INFERENCE_URL: str
     HAYSTACK_INGESTION_URL: str
+
+    PII_FILTER_URL: str
 
     RABBITMQ_URL: str
 

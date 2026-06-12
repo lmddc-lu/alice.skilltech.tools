@@ -1,6 +1,6 @@
 services:
   db:
-    container_name: pg_db_echt
+    container_name: pg_db
     image: postgres:17
     restart: unless-stopped
     profiles: [prod, dev]
@@ -39,7 +39,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER?Variable not set}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
   api-dev:
-      container_name: echt_api_container_dev
+      container_name: api_container_dev
       restart: unless-stopped
       build:
         context: api
@@ -165,7 +165,7 @@ services:
           condition: service_healthy
 
   frontend-dev:
-    container_name: echt_frontend_container_dev
+    container_name: frontend_container_dev
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
@@ -194,7 +194,7 @@ services:
       - 8090:8080
 
   garage:
-    container_name: garage-echt
+    container_name: garage
     image: dxflrs/garage:v2.1.0
     restart: unless-stopped
     volumes:
@@ -212,7 +212,7 @@ services:
 
   garage-webui:
     image: khairul169/garage-webui:latest
-    container_name: garage-webui-echt
+    container_name: garage-webui
     restart: unless-stopped
     volumes:
       - ./.garage_conf/garage.toml:/etc/garage.toml:ro
@@ -231,7 +231,8 @@ services:
     image: rabbitmq:4.2.1-management
     restart: unless-stopped
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq 
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./monitoring/rabbitmq/20-prometheus.conf:/etc/rabbitmq/conf.d/20-prometheus.conf:ro
     ports:
       - "5672:5672"    # RabbitMQ
       - "15672:15672"  # RabbitMQ Management
@@ -239,7 +240,6 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 7200000
     networks:
       - api_net
     healthcheck:

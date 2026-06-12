@@ -45,6 +45,10 @@ class IngestionResult:
     # distinct from a regular failure so the caller raises JobCancelledException
     # instead of recording a file failure
     cancelled: bool = False
+    # stale/absolute timeout, so the caller can classify without string-matching
+    timed_out: bool = False
+    # rag-pipeline's own job id, for correlating with hayhooks logs/Redis
+    haystack_job_id: str | None = None
 
 
 @dataclass
@@ -96,8 +100,13 @@ class HaystackClient:
         recreate_index: bool = False,
         export_type: str = "doc_chunks",
         force_ocr: bool = False,
+        client_job_id: str | None = None,
     ) -> str:
-        """Submit an async ingestion job. Returns job_id."""
+        """Submit an async ingestion job. Returns the rag-pipeline's job_id.
+
+        client_job_id is the platform's Job id; it rides along so the
+        rag-pipeline can log and store it for cross-service correlation.
+        """
         files = []
         file_metadata = []
         for info in file_infos:
@@ -124,6 +133,8 @@ class HaystackClient:
                 "force_ocr": force_ocr,
                 "action": "submit",
             }
+            if client_job_id:
+                data["client_job_id"] = client_job_id
             response = self._make_request(
                 method="POST",
                 endpoint="/document_ingestion/run",
@@ -171,12 +182,15 @@ class HaystackClient:
         force_ocr: bool = False,
         on_progress: ProgressCallback | None = None,
         cancel_check: CancelCheck | None = None,
+        client_job_id: str | None = None,
     ) -> IngestionResult:
         """Ingest files via async submit+poll.
 
         on_progress fires per status snapshot change; exceptions are swallowed.
         cancel_check is polled per iteration; cancellation is best-effort and
         only stops the local wait, not the remote Haystack job.
+        client_job_id (the platform Job id) is forwarded to the rag-pipeline
+        for log correlation.
         """
         if not file_infos:
             raise ValueError("No files provided for ingestion")
@@ -191,10 +205,29 @@ class HaystackClient:
             )
 
         job_id = self.submit_ingestion(
-            file_infos, index_name, recreate_index, export_type, force_ocr
+            file_infos,
+            index_name,
+            recreate_index,
+            export_type,
+            force_ocr,
+            client_job_id=client_job_id,
         )
         logger.info(f"Submitted async ingestion job: {job_id}")
 
+        result = self._await_ingestion(
+            job_id, on_progress=on_progress, cancel_check=cancel_check
+        )
+        result.haystack_job_id = job_id
+        return result
+
+    def _await_ingestion(
+        self,
+        job_id: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+        cancel_check: CancelCheck | None = None,
+    ) -> IngestionResult:
+        """Poll one submitted rag-pipeline job to a terminal IngestionResult."""
         start_time = time.monotonic()
         last_status_snapshot = None
         last_change_time = start_time
@@ -208,6 +241,7 @@ class HaystackClient:
                     success=False,
                     documents_ingested=0,
                     error=f"Job {job_id} exceeded absolute timeout ({self.ABSOLUTE_TIMEOUT}s)",
+                    timed_out=True,
                 )
 
             if cancel_check is not None and _safe_cancelled(cancel_check):
@@ -268,6 +302,7 @@ class HaystackClient:
                     success=False,
                     documents_ingested=0,
                     error=f"Job {job_id} stale: no progress for {self.STALE_TIMEOUT}s",
+                    timed_out=True,
                 )
 
             job_status = status.get("status")
@@ -366,10 +401,17 @@ class HaystackClient:
         file_names: list[str] = None,
         file_paths: list[str] = None,
         index_name: str | None = None,
+        file_ids: list[str] | None = None,
     ) -> dict:
-        """Delete documents from an index."""
+        """Delete documents from an index.
+
+        file_ids match the stable meta.file_id (rename-proof); file_names
+        fall back to origin-filename matching for chunks without a file_id.
+        """
         data = {"action": "delete"}
 
+        if file_ids:
+            data["file_ids"] = file_ids
         if file_names:
             data["file_names"] = file_names
         if file_paths:

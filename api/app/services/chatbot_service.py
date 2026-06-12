@@ -84,6 +84,7 @@ class ChatbotService:
             cite_sources=chatbot.cite_sources,
             force_ocr=chatbot.force_ocr,
             persist_session=chatbot.persist_session,
+            pii_filter_enabled=chatbot.pii_filter_enabled,
             chatbot_token="",
             prompt_suggestions=prompt_suggestions,
             datasource_types=datasource_types,

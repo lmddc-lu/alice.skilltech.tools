@@ -115,7 +115,12 @@ def _fail_job(
         job = job_repo.fail_job(
             job_id,
             error_message=message.get("error", default_error),
-            error_details=message.get("traceback") or message.get("error_details"),
+            # the worker sends "error_detail"; the other keys are kept for
+            # older payloads still in flight
+            error_details=message.get("error_detail")
+            or message.get("traceback")
+            or message.get("error_details"),
+            error_kind=message.get("error_kind"),
         )
         if job:
             logger.info(f"Job {job_id} marked as failed")

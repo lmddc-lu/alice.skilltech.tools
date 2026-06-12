@@ -77,13 +77,20 @@ def delete_documents(
     file_names: list[str] | None = None,
     index_name: str | None = None,
     default_index: str = "Document",
+    file_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Delete documents matching the given paths or names."""
-    if not file_paths and not file_names:
+    """Delete documents matching the given file_ids, paths, or names.
+
+    file_ids match the stable meta.file_id stamped at ingestion and are the
+    rename-proof path (a server-side filter, immune to any filename change a
+    converter makes). file_paths/file_names fall back to origin-filename
+    matching for chunks that carry no file_id (e.g. legacy bare ingests).
+    """
+    if not file_paths and not file_names and not file_ids:
         return {
             "success": False,
             "action": "delete",
-            "error": "No file_paths or file_names provided",
+            "error": "No file_ids, file_paths, or file_names provided",
             "total_documents_removed": 0,
             "index_name": index_name or default_index,
             "hybrid_search_enabled": USE_SPARSE_EMBEDDINGS,
@@ -93,6 +100,44 @@ def delete_documents(
         removed_count = 0
         removed_files = []
         errors = []
+
+        for file_id in file_ids or []:
+            try:
+                matching_docs = document_store.filter_documents(
+                    filters={
+                        "operator": "==",
+                        "field": "meta.file_id",
+                        "value": file_id,
+                    }
+                )
+                if matching_docs:
+                    document_store.delete_documents(
+                        document_ids=[doc.id for doc in matching_docs]
+                    )
+                    removed_count += len(matching_docs)
+                    removed_files.append(
+                        {
+                            "file_id": file_id,
+                            "documents_removed": len(matching_docs),
+                            "method": "file_id_match",
+                        }
+                    )
+                    logger.info(
+                        f"Removed {len(matching_docs)} documents for file_id: {file_id}"
+                    )
+                else:
+                    removed_files.append(
+                        {
+                            "file_id": file_id,
+                            "documents_removed": 0,
+                            "method": "file_id_match",
+                            "note": "No documents found",
+                        }
+                    )
+            except Exception as e:
+                error_msg = f"Error removing documents for file_id '{file_id}': {e}"
+                errors.append(error_msg)
+                logger.error(error_msg)
 
         all_names_to_remove = []
         if file_paths:

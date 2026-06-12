@@ -148,6 +148,7 @@ export interface ChatbotItem {
   cite_sources: boolean;
   force_ocr: boolean;
   persist_session: boolean;
+  pii_filter_enabled: boolean;
   avatar_storage_path: string | null;
   avatar_url: string | null;
   reindex_schedule_enabled: boolean;

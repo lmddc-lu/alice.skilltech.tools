@@ -356,6 +356,13 @@
         "persistSessionDisabled": "Beim Neuladen verworfen",
         "persistSessionEnabledDescription": "Besucher behalten ihr Gespräch nach einem Neuladen (im localStorage ihres Browsers gespeichert)",
         "persistSessionDisabledDescription": "Jedes Neuladen startet ein neues Gespräch",
+        "piiFilter": "Filter für persönliche Daten (PII)",
+        "piiFilterEnabled": "Aktiviert",
+        "piiFilterDisabled": "Deaktiviert",
+        "piiFilterEnabledDescription": "Personenbezogene Daten (E-Mails, Telefonnummern usw.) werden aus Nachrichten entfernt, bevor sie an das KI-Modell gesendet werden",
+        "piiFilterDisabledDescription": "Nachrichten werden ohne Schwärzung an das KI-Modell gesendet",
+        "piiFilterLatencyNote": "Das Prüfen jeder Nachricht verursacht eine kurze Verzögerung, bevor die KI antwortet.",
+        "piiFilterDocumentation": "PII-Filter-Dokumentation anzeigen",
         "apiAccess": "API-Zugang",
         "apiEnabled": "API aktiviert",
         "apiDisabled": "API deaktiviert",
@@ -401,7 +408,10 @@
         "retry": "Erneut versuchen",
         "aiDisclaimer": "Diese Informationen werden von einer KI generiert und können Fehler oder veraltete Details enthalten. Bitte überprüfen Sie wichtige Fakten anhand verlässlicher Quellen.",
         "clearConversation": "Unterhaltung löschen",
-        "clearConfirm": "Diese Unterhaltung löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+        "clearConfirm": "Diese Unterhaltung löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+        "errorProcessing": "Entschuldigung, ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
+        "piiFilterWarning": "Personenbezogene Daten wurden erkannt und aus Ihrer Nachricht entfernt, bevor sie die KI erreichte. Bitte teilen Sie vorsichtshalber keine persönlichen Informationen in diesem Chat.",
+        "dismiss": "Schließen"
     },
     "moodleModal": {
         "title": "Moodle-Kurse verwalten",

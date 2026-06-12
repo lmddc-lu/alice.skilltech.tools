@@ -172,6 +172,7 @@ class ChatbotBase(SQLModel):
     cite_sources: bool = Field(default=True)
     force_ocr: bool = Field(default=False)
     persist_session: bool = Field(default=False)
+    pii_filter_enabled: bool = Field(default=False)
     avatar_storage_path: str | None = Field(default=None, max_length=1024)
 
     # scheduled reindex. frequency is a ReindexFrequency value.

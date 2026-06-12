@@ -269,6 +269,25 @@ export class ChatbotSettingsComponent {
       });
   }
 
+  togglePiiFilter(): void {
+    const chatbot = this.chatbot();
+    const newValue = !chatbot.pii_filter_enabled;
+
+    this.chatbotService
+      .updateChatbot(chatbot.id, { pii_filter_enabled: newValue })
+      .subscribe({
+        next: (updatedChatbot) => {
+          this.chatbotChange.emit({
+            ...chatbot,
+            pii_filter_enabled: updatedChatbot.pii_filter_enabled,
+          });
+        },
+        error: (err) => {
+          console.error('Error toggling PII filter:', err);
+        },
+      });
+  }
+
   // Backend rejects reindex scheduling for file-only KBs since file edits
   // already trigger a reingest.
   hasMoodleDatasource = computed(() =>

@@ -16,6 +16,7 @@ from app.core.rate_limit import limiter
 from app.models.tables import Chatbot
 from app.repositories.chatbot import ChatbotRepository
 from app.services.citation_service import build_citations, fetch_and_encode_citations
+from app.services.openai_stream_format import DONE_LINE, transform_stream_chunk
 from app.services.rag_service import (
     HayhooksMessage,
     chat_with_knowledgebase_stream,
@@ -97,6 +98,9 @@ def _streaming_response(
     source_doc_token: str,
     session: Session,
 ) -> StreamingResponse:
+    response_id = f"chatcmpl-{uuid.uuid4()}"
+    created = int(time.time())
+
     async def generate() -> AsyncGenerator[bytes]:
         collected_text = []
         stream = chat_with_knowledgebase_stream(
@@ -107,24 +111,23 @@ def _streaming_response(
             source_doc_token=source_doc_token,
         )
         async for chunk in stream:
-            if chunk:
-                text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
-                for line in text.strip().split("\n"):
-                    line = line.strip()
-                    if not line.startswith("data:"):
-                        continue
-                    payload = line[len("data:") :].strip()
-                    if payload == "[DONE]":
-                        continue
-                    try:
-                        parsed = json.loads(payload)
-                        delta = parsed.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            collected_text.append(content)
-                    except (json.JSONDecodeError, IndexError):
-                        pass
-                yield chunk
+            if not chunk:
+                continue
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            # Rewrite each chunk's id/created/model, and drop any upstream
+            # [DONE]; collect the assistant text for citation matching.
+            out, content = transform_stream_chunk(
+                text, chatbot.name, response_id, created
+            )
+            if content:
+                collected_text.append(content)
+            if out:
+                yield out.encode("utf-8")
+
+        # OpenAI-compatible terminator. It is sent before the citations event so
+        # standard clients can stop here, while citation-aware clients keep
+        # reading one more event past [DONE].
+        yield DONE_LINE
 
         response_text = "".join(collected_text)
         citation_data = await fetch_and_encode_citations(

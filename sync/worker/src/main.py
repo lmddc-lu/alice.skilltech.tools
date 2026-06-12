@@ -2,6 +2,7 @@ import logging
 import sys
 
 from config import Config
+from logcontext import JobContextFilter
 from metrics import start_metrics_server
 from worker import SyncWorker
 
@@ -9,8 +10,10 @@ from worker import SyncWorker
 def main():
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s%(job_context)s",
     )
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(JobContextFilter())
     logger = logging.getLogger(__name__)
 
     try:

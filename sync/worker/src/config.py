@@ -13,7 +13,7 @@ class Config:
     app_s3_namespace: str = "alice"
     haystack_stale_timeout: int = 900
     haystack_absolute_timeout: int = 86400
-    # pika is single-threaded with prefetch=1, a slow Moodle stalls the whole worker
+    # the worker claims one message at a time, a slow Moodle stalls it entirely
     moodle_request_timeout: int = 30
     # debounce so docling ticks don't flood rabbit and hammer the API db
     haystack_progress_pct_step: int = 5

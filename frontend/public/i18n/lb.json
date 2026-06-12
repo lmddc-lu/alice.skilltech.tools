@@ -356,6 +356,13 @@
         "persistSessionDisabled": "Beim Nei lueden ewechgeholl",
         "persistSessionEnabledDescription": "Besucher behalen hiert Gespréich no engem Nei lueden (am localStorage vum Browser gespäichert)",
         "persistSessionDisabledDescription": "All Nei lueden start e frësche Gespréich",
+        "piiFilter": "Filter fir perséinlech Donnéeën (PII)",
+        "piiFilterEnabled": "Aktivéiert",
+        "piiFilterDisabled": "Desaktivéiert",
+        "piiFilterEnabledDescription": "Perséinlech Donnéeën (E-Maile, Telefonsnummeren, asw.) gi vun de Messagen erausgeholl ier se un d'KI-Modell geschéckt ginn",
+        "piiFilterDisabledDescription": "Messagë gi ouni Schwäerzung un d'KI-Modell geschéckt",
+        "piiFilterLatencyNote": "D'Iwwerpréiwung vun all Message bréngt e klenge Verzuch ier d'KI äntwert.",
+        "piiFilterDocumentation": "PII-Filter-Dokumentatioun kucken",
         "apiAccess": "API-Zougang",
         "apiEnabled": "API aktivéiert",
         "apiDisabled": "API deaktivéiert",
@@ -401,7 +408,10 @@
         "retry": "Nach emol probéieren",
         "aiDisclaimer": "Dës Informatioune goufe vun enger KI generéiert a kënne Feeler oder verouderten Inhalt enthalen. Iwwerpréift wichteg Fakten bei zouverléissege Quellen.",
         "clearConversation": "Gespréich läschen",
-        "clearConfirm": "Dëst Gespréich läschen? Dës Aktioun kann net réckgängeg gemaach ginn."
+        "clearConfirm": "Dëst Gespréich läschen? Dës Aktioun kann net réckgängeg gemaach ginn.",
+        "errorProcessing": "Pardon, et ass e Feeler opgetrueden. Probéiert w.e.g. nach emol.",
+        "piiFilterWarning": "Perséinlech Donnéeë goufen erkannt an aus Ärer Noriicht ewechgeholl, ier se bei d'KI komm ass. Als Virsiichtsmoossnam deelt w.e.g. keng perséinlech Informatiounen an dësem Chat.",
+        "dismiss": "Zoumaachen"
     },
     "moodleModal": {
         "title": "Moodle-Coursen verwalten",

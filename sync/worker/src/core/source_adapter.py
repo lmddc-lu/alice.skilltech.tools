@@ -34,8 +34,9 @@ class SourceAdapter:
         owner_email: str,
         selected_files: list,
         force: bool,
-    ) -> int:
-        return 0
+    ) -> tuple[int, list[str]]:
+        """Returns (files_downloaded, pruned_basenames)."""
+        return 0, []
 
     def collect_files(self, datasource: dict, owner_email: str) -> list[dict]:
         return []

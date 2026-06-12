@@ -29,11 +29,12 @@ class FileSourceAdapter(SourceAdapter):
         owner_email: str,
         selected_files: list,
         force: bool,
-    ) -> int:
+    ) -> tuple[int, list[str]]:
         """Verify each selected file is present in storage.
 
-        Always returns 0. Missing files are logged so a broken upload
-        surfaces here instead of later as a confusing ingestion failure.
+        Always returns (0, []), nothing is downloaded or pruned. Missing
+        files are logged so a broken upload surfaces here instead of later as
+        a confusing ingestion failure.
         """
         datasource_id = datasource.get("datasource_id")
         logger.info(f"FILE datasource {datasource_id}: Verifying files")
@@ -53,7 +54,7 @@ class FileSourceAdapter(SourceAdapter):
         logger.info(
             f"Verified {verified_count}/{len(selected_files)} files for FILE datasource"
         )
-        return 0
+        return 0, []
 
     def collect_files(self, datasource: dict, owner_email: str) -> list[dict]:
         """Turn the selection list into ingestion entries.

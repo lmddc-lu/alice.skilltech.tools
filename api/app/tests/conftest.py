@@ -10,6 +10,7 @@ _TEST_ENV_DEFAULTS = {
     "POSTGRES_USER": "postgres",
     "HAYSTACK_INFERENCE_URL": "http://localhost:1416",
     "HAYSTACK_INGESTION_URL": "http://localhost:1416",
+    "PII_FILTER_URL": "http://localhost:1417",
     "RABBITMQ_URL": "amqp://guest:guest@localhost:5672/",
     "MINIO_URL": "http://localhost:9000",
     "MINIO_ACCESS_KEY": "minioadmin",
@@ -19,6 +20,15 @@ _TEST_ENV_DEFAULTS = {
 }
 for _k, _v in _TEST_ENV_DEFAULTS.items():
     os.environ.setdefault(_k, _v)
+
+# No unit test should reach a real object store. Stub the Minio client before
+# any storage-backed service is imported, so constructing a StorageManager
+# (e.g. the module-level file_upload_manager singleton) never opens a socket.
+from unittest.mock import MagicMock  # noqa: E402
+
+import app.core.storage as _storage  # noqa: E402
+
+_storage.Minio = MagicMock()
 
 import pytest  # noqa: E402
 from sqlalchemy.engine import Engine  # noqa: E402

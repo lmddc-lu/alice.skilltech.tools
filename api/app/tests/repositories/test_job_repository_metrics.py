@@ -167,6 +167,63 @@ class TestFailure:
             == before_failure + 1
         )
 
+    def test_fail_job_prefers_worker_declared_error_kind(
+        self, db: Session, test_user: User
+    ) -> None:
+        """A worker-declared error_kind wins over message classification:
+        the message says "authentication" but the worker knows it was a
+        connection failure."""
+        before = _counter_value(
+            JOB_FAILURES,
+            job_type=JobType.METADATA_SYNC.value,
+            error_kind=ERROR_KIND_CONNECTION,
+        )
+        job_repo = JobRepository(db)
+        job = job_repo.create_job(job_type=JobType.METADATA_SYNC, user_id=test_user.id)
+
+        job_repo.fail_job(
+            job.id,
+            error_message="Moodle authentication endpoint unreachable",
+            error_kind=ERROR_KIND_CONNECTION,
+        )
+
+        assert (
+            _counter_value(
+                JOB_FAILURES,
+                job_type=JobType.METADATA_SYNC.value,
+                error_kind=ERROR_KIND_CONNECTION,
+            )
+            == before + 1
+        )
+
+    def test_fail_job_unknown_error_kind_falls_back_to_classification(
+        self, db: Session, test_user: User
+    ) -> None:
+        """An unrecognized error_kind must not become a metric label
+        (cardinality guard); fall back to classifying the message."""
+        before = _counter_value(
+            JOB_FAILURES,
+            job_type=JobType.METADATA_SYNC.value,
+            error_kind=ERROR_KIND_TIMEOUT,
+        )
+        job_repo = JobRepository(db)
+        job = job_repo.create_job(job_type=JobType.METADATA_SYNC, user_id=test_user.id)
+
+        job_repo.fail_job(
+            job.id,
+            error_message="Request timed out",
+            error_kind="surprise-bucket",
+        )
+
+        assert (
+            _counter_value(
+                JOB_FAILURES,
+                job_type=JobType.METADATA_SYNC.value,
+                error_kind=ERROR_KIND_TIMEOUT,
+            )
+            == before + 1
+        )
+
 
 class TestStalledMetrics:
     def test_mark_stalled_records_stalled_status(

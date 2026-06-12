@@ -60,11 +60,13 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
         confirm_index_deletion: bool = False,
         file_name: str | None = None,
         file_id: str | None = None,
+        file_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Document management API.
 
         :param action: 'list', 'delete', 'stats', or 'get_file_content'.
         :param file_id: file UUID, preferred over file_name for get_file_content.
+        :param file_ids: stable meta.file_id values for rename-proof delete.
         """
         try:
             # delete with index_name but no file selectors targets the whole index
@@ -73,6 +75,7 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
                 and index_name is not None
                 and not file_paths
                 and not file_names
+                and not file_ids
             )
 
             if is_index_deletion:
@@ -96,6 +99,7 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
                     file_names,
                     index_name,
                     self._default_index,
+                    file_ids=file_ids,
                 )
             elif action == "stats":
                 return get_stats(document_store, index_name, self._default_index)
@@ -128,6 +132,7 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
         confirm_index_deletion: bool = False,
         file_name: str | None = None,
         file_id: str | None = None,
+        file_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         return self.run_api(
             action,
@@ -137,6 +142,7 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
             confirm_index_deletion,
             file_name,
             file_id,
+            file_ids,
         )
 
 

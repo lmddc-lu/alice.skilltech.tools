@@ -82,6 +82,7 @@ function newChatbot(
     cite_sources: citeSources,
     force_ocr: forceOcr,
     persist_session: false,
+    pii_filter_enabled: false,
     avatar_storage_path: null,
     avatar_url: null,
     reindex_schedule_enabled: false,

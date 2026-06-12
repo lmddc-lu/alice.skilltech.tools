@@ -103,6 +103,7 @@ SCHEDULER_TASK_STALLED_SWEEP = "stalled_jobs_sweep"
 SCHEDULER_TASK_RECONCILE_CHATBOTS = "reconcile_chatbots"
 SCHEDULER_TASK_CHATBOT_REINDEX = "chatbot_reindex"
 SCHEDULER_TASK_JOBS_IN_STATE_REFRESH = "jobs_in_state_refresh"
+SCHEDULER_TASK_JOB_RETENTION = "job_retention"
 
 SCHEDULER_OUTCOME_OK = "ok"
 SCHEDULER_OUTCOME_ERROR = "error"
@@ -158,13 +159,27 @@ ERROR_KIND_EMPTY_CONTENT = "empty_content"
 ERROR_KIND_CANCELLED = "cancelled"
 ERROR_KIND_OTHER = "other"
 
+# accepted values for the error_kind field on worker failure payloads;
+# anything else falls back to classify_error_kind so a buggy producer
+# can't fan out the metric's label cardinality
+KNOWN_ERROR_KINDS = frozenset(
+    {
+        ERROR_KIND_AUTH,
+        ERROR_KIND_CONNECTION,
+        ERROR_KIND_TIMEOUT,
+        ERROR_KIND_EMPTY_CONTENT,
+        ERROR_KIND_CANCELLED,
+        ERROR_KIND_OTHER,
+    }
+)
+
 
 def classify_error_kind(error_message: str | None) -> str:
     """Bucket a free-text error into a stable label for failure dashboards.
 
     Order matters: auth before connection (a Moodle auth error often contains
     "connection" too). Keep the bucket count small so the time series doesn't
-    fan out, anything unmatched goes to "other".
+    fan out — anything unmatched goes to "other".
     """
     if not error_message:
         return ERROR_KIND_OTHER

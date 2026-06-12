@@ -8,8 +8,8 @@ Alice is built around the principle of only using open-source components and run
 
 Alice is made of two Docker Compose stacks:
 
-- **Main stack** — `docker-compose.yml` at the repo root. Runs the frontend, API, sync worker, PostgreSQL, Redis, RabbitMQ, and a bundled Garage instance for S3-compatible storage.
-- **RAG pipeline** — `services/docker-compose-full.yml`, or `docker-compose-full-gpu.yml` if you have a GPU. Runs Haystack, Docling Serve, Qdrant, and the PII filter.
+- **Main stack**: `docker-compose.yml` at the repo root. Runs the frontend, API, sync worker, PostgreSQL, Redis, RabbitMQ, and a bundled Garage instance for S3-compatible storage.
+- **RAG pipeline**: `services/docker-compose-full.yml`, or `docker-compose-full-gpu.yml` if you have a GPU. Runs Haystack, Docling Serve, Qdrant, and the PII filter.
 
 It is recommended to run the RAG pipeline on a machine with a GPU to accelerate document parsing. In this setup, we will setup both stacks on the same machine, but they can be separated as long as they are on the same network.
 

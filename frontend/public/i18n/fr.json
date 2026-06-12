@@ -356,6 +356,13 @@
         "persistSessionDisabled": "Effacée au rechargement",
         "persistSessionEnabledDescription": "Les visiteurs conservent leur conversation après un rechargement (stockée dans le localStorage de leur navigateur)",
         "persistSessionDisabledDescription": "Chaque rechargement démarre une nouvelle conversation",
+        "piiFilter": "Filtre de données personnelles",
+        "piiFilterEnabled": "Activé",
+        "piiFilterDisabled": "Désactivé",
+        "piiFilterEnabledDescription": "Les données personnelles (e-mails, numéros de téléphone, etc.) sont masquées dans les messages avant leur envoi au modèle d'IA",
+        "piiFilterDisabledDescription": "Les messages sont envoyés au modèle d'IA sans masquage",
+        "piiFilterLatencyNote": "L'analyse de chaque message ajoute un court délai avant la réponse de l'IA.",
+        "piiFilterDocumentation": "Voir la documentation du filtre de données personnelles",
         "apiAccess": "Accès API",
         "apiEnabled": "API activée",
         "apiDisabled": "API désactivée",
@@ -401,7 +408,10 @@
         "retry": "Réessayer",
         "aiDisclaimer": "Ces informations sont générées par une IA et peuvent contenir des erreurs ou des informations obsolètes. Veuillez vérifier les faits importants auprès de sources fiables.",
         "clearConversation": "Effacer la conversation",
-        "clearConfirm": "Effacer cette conversation ? Cette action est irréversible."
+        "clearConfirm": "Effacer cette conversation ? Cette action est irréversible.",
+        "errorProcessing": "Désolé, une erreur s'est produite. Veuillez réessayer.",
+        "piiFilterWarning": "Des données personnelles ont été détectées et supprimées de votre message avant son envoi à l'IA. Par précaution, évitez de partager des informations personnelles dans cette conversation.",
+        "dismiss": "Fermer"
     },
     "moodleModal": {
         "title": "Gérer les cours Moodle",

@@ -17,6 +17,7 @@ from app.core.db import engine
 from app.core.metrics import (
     SCHEDULER_STALLED_JOBS_SWEPT,
     SCHEDULER_TASK_CHATBOT_REINDEX,
+    SCHEDULER_TASK_JOB_RETENTION,
     SCHEDULER_TASK_JOBS_IN_STATE_REFRESH,
     SCHEDULER_TASK_RECONCILE_CHATBOTS,
     SCHEDULER_TASK_STALLED_SWEEP,
@@ -38,6 +39,8 @@ _CHATBOT_REINDEX_JOB_PREFIX = "chatbot_reindex:"
 _INT63_MASK = (1 << 63) - 1
 # arbitrary distinct constant for the singleton stalled-job checker
 _STALLED_JOB_LOCK_KEY = 0x5C4E_D11E_5_7A11_5B & _INT63_MASK
+# arbitrary distinct constant for the singleton job-retention sweep
+_JOB_RETENTION_LOCK_KEY = 0x4E7_8E72_10_4E7E_77 & _INT63_MASK
 
 
 def _chatbot_reindex_job_id(chatbot_id: UUID) -> str:
@@ -130,6 +133,17 @@ class SchedulerService:
             IntervalTrigger(seconds=30),
             id="refresh_jobs_in_state_gauge",
             name="Refresh jobs_in_state metric",
+            replace_existing=True,
+        )
+
+        # Prune terminal jobs (and their job files/events) past the
+        # retention window so the job tables don't grow unbounded. Daily;
+        # the advisory lock collapses multi-worker firings to one run.
+        self.scheduler.add_job(
+            self._cleanup_old_jobs,
+            IntervalTrigger(hours=24),
+            id="cleanup_old_jobs",
+            name="Prune jobs past retention window",
             replace_existing=True,
         )
 
@@ -411,6 +425,35 @@ class SchedulerService:
                     MonitoringService(session).refresh_jobs_in_state_gauge()
         except Exception as e:
             logger.error(f"Failed to refresh jobs_in_state gauge: {e}", exc_info=True)
+
+    def _cleanup_old_jobs(self) -> None:
+        """Prune terminal jobs past the retention window.
+
+        Runs in a background thread with its own session. The advisory lock
+        collapses multi-worker firings to one effective run, like the stalled
+        sweep. Deleting jobs also reaps their job files/events, which is what
+        clears the dangling JobFile rows left when an UploadedFile is removed.
+        """
+        retention_days = settings.JOB_RETENTION_DAYS
+        if retention_days <= 0:
+            return
+
+        with _try_pg_advisory_lock(_JOB_RETENTION_LOCK_KEY) as got:
+            if not got:
+                return
+            try:
+                with track_scheduler_run(SCHEDULER_TASK_JOB_RETENTION):
+                    with Session(engine) as session:
+                        deleted = JobRepository(session).cleanup_old_jobs(
+                            days=retention_days
+                        )
+                    if deleted:
+                        logger.info(
+                            f"Job retention sweep deleted {deleted} job(s) older "
+                            f"than {retention_days}d"
+                        )
+            except Exception as e:
+                logger.error(f"Error pruning old jobs: {e}", exc_info=True)
 
 
 scheduler_service = SchedulerService()

@@ -6,8 +6,6 @@ import traceback
 from pathlib import Path
 from typing import TypedDict
 
-import pika
-
 from api.haystack import HaystackClient
 from config import Config
 from core.file_adapter import FileSourceAdapter
@@ -62,10 +60,22 @@ class JobFileState:
 class JobFileErrorCode:
     """Stable failure codes for per-file FAILED states.
 
+    Codes are stage-specific so a failed file tells you where in the
+    pipeline it died without reading the traceback.
+
     Mirrors app.models.JobFileErrorCode. Pinned by test_jobfilestate_contract.py.
     """
 
+    # ingestion succeeded but produced zero chunks (image-only PDF, scanned page)
     EMPTY_CONTENT = "empty_content"
+    # could not fetch the file from object storage
+    DOWNLOAD_FAILED = "download_failed"
+    # H5P/SCORM preprocessing failed or produced no output
+    PROCESSOR_FAILED = "processor_failed"
+    # rag-pipeline reported failure or the call raised
+    INGESTION_FAILED = "ingestion_failed"
+    # rag-pipeline went stale or exceeded the absolute time budget
+    INGESTION_TIMEOUT = "ingestion_timeout"
 
 
 class FailedFile(TypedDict):
@@ -209,14 +219,15 @@ class SyncWorker:
                     message, force
                 )
 
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-
                 completion_message = {
                     "job_id": job_id,
                     "datasource_id": datasource_id,
                     "courses": courses_metadata,
                     "operation": "metadata_sync",
                 }
+                # the message was acked at claim (at-most-once, see
+                # RabbitMQClient.start_consuming) and will never redeliver;
+                # publishing an outcome is the only signal the API gets.
                 self.mq_client.publish(
                     self.metadata_sync_queue.completed_name, completion_message
                 )
@@ -228,19 +239,19 @@ class SyncWorker:
                 job_status["value"] = JOB_STATUS_AUTH_ERROR
                 logger.error(f"Authentication/Connection error in metadata sync: {e}")
                 self._handle_auth_error(
-                    ch,
                     method,
-                    properties,
                     body,
                     str(e),
                     job_id,
                     error_detail=traceback.format_exc(),
+                    error_kind="auth"
+                    if isinstance(e, MoodleAuthenticationError)
+                    else "connection",
                 )
             except Exception as e:
                 job_status["value"] = JOB_STATUS_FAILED
                 logger.error(f"Error processing metadata sync message: {e}")
                 self._handle_error(
-                    ch,
                     method,
                     body,
                     job_id,
@@ -275,8 +286,6 @@ class SyncWorker:
                     message, selected_files, force
                 )
 
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-
                 completion_message = {
                     "job_id": job_id,
                     "datasource_id": datasource_id,
@@ -295,19 +304,19 @@ class SyncWorker:
                 job_status["value"] = JOB_STATUS_AUTH_ERROR
                 logger.error(f"Authentication/Connection error in content sync: {e}")
                 self._handle_auth_error(
-                    ch,
                     method,
-                    properties,
                     body,
                     str(e),
                     job_id,
                     error_detail=traceback.format_exc(),
+                    error_kind="auth"
+                    if isinstance(e, MoodleAuthenticationError)
+                    else "connection",
                 )
             except Exception as e:
                 job_status["value"] = JOB_STATUS_FAILED
                 logger.error(f"Error processing content sync message: {e}")
                 self._handle_error(
-                    ch,
                     method,
                     body,
                     job_id,
@@ -358,7 +367,7 @@ class SyncWorker:
                     job_id, message="Connected to processing service"
                 )
 
-                total_downloaded = self._ensure_content_available(
+                total_downloaded, pruned_files = self._ensure_content_available(
                     datasources, owner_email, force
                 )
                 logger.info(f"Downloaded {total_downloaded} missing files")
@@ -366,6 +375,35 @@ class SyncWorker:
                     job_id,
                     message=f"Downloaded {total_downloaded} files from storage",
                 )
+
+                # files pruned from storage because they no longer exist
+                # upstream leave stale chunks in the index; delete those too so
+                # they stop surfacing as citations. Prefer the stable file_id
+                # (rename-proof); fall back to basename for chunks without one.
+                # Best-effort: a failure here must not fail the sync.
+                if pruned_files:
+                    try:
+                        file_ids = [
+                            p["file_id"] for p in pruned_files if p.get("file_id")
+                        ]
+                        fallback_names = [
+                            p["basename"] for p in pruned_files if not p.get("file_id")
+                        ]
+                        result = haystack_client.delete_documents(
+                            file_ids=file_ids or None,
+                            file_names=fallback_names or None,
+                            index_name=kb_id,
+                        )
+                        payload = (result or {}).get("result", result) or {}
+                        removed = payload.get("total_documents_removed", "?")
+                        logger.info(
+                            f"Pruned {len(pruned_files)} stale file(s) from index "
+                            f"{kb_id}: {removed} document(s) removed"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to prune stale documents from index {kb_id}: {e}"
+                        )
 
                 objects_to_sync = self._collect_datasource_files(
                     datasources, owner_email
@@ -398,10 +436,6 @@ class SyncWorker:
                         f"see job files for per-file errors"
                     )
 
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-
-                CHUNKS_CREATED.inc(sync_stats["chunks_created"])
-
                 completion_message = {
                     "job_id": job_id,
                     "knowledge_base_id": kb_id,
@@ -416,6 +450,8 @@ class SyncWorker:
                 self.mq_client.publish(
                     self.ingestion_queue.completed_name, completion_message
                 )
+
+                CHUNKS_CREATED.inc(sync_stats["chunks_created"])
                 logger.info(
                     f"Published completion message for KB {kb_id} (job_id={job_id}): "
                     f"{succeeded} succeeded, {failed} failed"
@@ -423,27 +459,24 @@ class SyncWorker:
 
             except JobCancelledException:
                 job_status["value"] = JOB_STATUS_CANCELLED
-                logger.info(
-                    f"Job {job_id} cancelled, acking message without completion"
-                )
-                ch.basic_ack(delivery_tag=method.delivery_tag)
+                logger.info(f"Job {job_id} cancelled, no completion published")
             except (MoodleAuthenticationError, MoodleConnectionError) as e:
                 job_status["value"] = JOB_STATUS_AUTH_ERROR
                 logger.error(f"Authentication/Connection error in ingestion: {e}")
                 self._handle_auth_error(
-                    ch,
                     method,
-                    properties,
                     body,
                     str(e),
                     job_id,
                     error_detail=traceback.format_exc(),
+                    error_kind="auth"
+                    if isinstance(e, MoodleAuthenticationError)
+                    else "connection",
                 )
             except Exception as e:
                 job_status["value"] = JOB_STATUS_FAILED
                 logger.error(f"Error processing KB sync message: {e}")
                 self._handle_error(
-                    ch,
                     method,
                     body,
                     job_id,
@@ -561,13 +594,27 @@ class SyncWorker:
             filename=original_filename,
             state=JobFileState.DOWNLOADING,
         )
+        local_path = temp_dir / storage_file_path.name
         try:
-            local_path = temp_dir / storage_file_path.name
             with track_file_stage(FILE_STAGE_DOWNLOAD):
                 self.storage.download_file(
                     self.config.bucket_name, str(storage_file_path), local_path
                 )
             logger.debug(f"Downloaded {storage_file_path.name} from storage")
+        except Exception as e:
+            logger.error(f"Error downloading file {storage_file_path}: {e}")
+            self._record_file_failure(
+                stats,
+                job_id,
+                file_id,
+                original_filename,
+                error_detail=f"Download error: {e}\n{traceback.format_exc()}",
+                short_error=f"Download error: {e}",
+                error_code=JobFileErrorCode.DOWNLOAD_FAILED,
+            )
+            return None
+
+        try:
             processed_file = self._process_uploaded_file(local_path, temp_dir)
             if not (processed_file and processed_file.exists()):
                 logger.warning(f"Failed to process file: {storage_file_path.name}")
@@ -578,6 +625,7 @@ class SyncWorker:
                     original_filename,
                     error_detail="File preprocessing produced no output",
                     short_error="File preprocessing produced no output",
+                    error_code=JobFileErrorCode.PROCESSOR_FAILED,
                 )
                 return None
 
@@ -605,6 +653,7 @@ class SyncWorker:
                 original_filename,
                 error_detail=f"Preparation error: {e}\n{traceback.format_exc()}",
                 short_error=f"Preparation error: {e}",
+                error_code=JobFileErrorCode.PROCESSOR_FAILED,
             )
             return None
 
@@ -688,6 +737,7 @@ class SyncWorker:
                     force_ocr=force_ocr,
                     on_progress=on_haystack_progress,
                     cancel_check=lambda: self.mq_client.is_job_cancelled(job_id),
+                    client_job_id=job_id,
                 )
         except Exception as e:
             logger.exception(f"Ingestion raised for {filename}")
@@ -698,6 +748,7 @@ class SyncWorker:
                 filename,
                 error_detail=f"Ingestion raised: {e}\n{traceback.format_exc()}",
                 short_error=f"Ingestion raised: {e}",
+                error_code=JobFileErrorCode.INGESTION_FAILED,
             )
             return False
 
@@ -719,13 +770,20 @@ class SyncWorker:
                 f"Ingestion failed for {filename}: {raw_err} "
                 f"(detail: {result.error_detail})"
             )
+            error_detail = result.error_detail or raw_err
+            if result.haystack_job_id:
+                # join key into the rag-pipeline's logs and Redis job store
+                error_detail += f"\nhaystack_job_id={result.haystack_job_id}"
             self._record_file_failure(
                 stats,
                 job_id,
                 file_id,
                 filename,
-                error_detail=result.error_detail or raw_err,
+                error_detail=error_detail,
                 short_error=raw_err,
+                error_code=JobFileErrorCode.INGESTION_TIMEOUT
+                if result.timed_out
+                else JobFileErrorCode.INGESTION_FAILED,
             )
             return False
 
@@ -759,9 +817,16 @@ class SyncWorker:
 
     def _ensure_content_available(
         self, datasources: list[dict], owner_email: str, force: bool = False
-    ) -> int:
-        """Ensure selected content is in storage; dispatches per SourceAdapter."""
+    ) -> tuple[int, list[dict]]:
+        """Ensure selected content is in storage; dispatches per SourceAdapter.
+
+        Returns (files_downloaded, pruned). pruned is a list of
+        {"file_id", "basename"} records for storage objects removed because
+        they no longer exist upstream; the caller deletes the matching
+        documents from the vector index.
+        """
         total_downloaded = 0
+        pruned_records: list[dict] = []
 
         for datasource in datasources:
             try:
@@ -778,11 +843,13 @@ class SyncWorker:
                 continue
 
             logger.info(f"Ensuring content availability for datasource {datasource_id}")
-            total_downloaded += self._get_adapter(source_type).ensure_content(
+            downloaded, pruned = self._get_adapter(source_type).ensure_content(
                 datasource, ds_owner_email, selected_files, force
             )
+            total_downloaded += downloaded
+            pruned_records.extend(pruned)
 
-        return total_downloaded
+        return total_downloaded, pruned_records
 
     def _collect_datasource_files(
         self, datasources: list[dict], owner_email: str
@@ -842,11 +909,19 @@ class SyncWorker:
         job_id: str | None,
         error_msg: str,
         error_detail: str | None,
+        error_kind: str | None = None,
     ) -> tuple[str, dict] | None:
-        """Build (queue, payload) for a job-level failure. Keeps both error handlers in lockstep."""
+        """Build (queue, payload) for a job-level failure. Keeps both error handlers in lockstep.
+
+        error_kind is the failure-dashboard bucket, set here where the
+        exception type is known; without it the API falls back to
+        string-matching on the error message.
+        """
         base: dict = {"job_id": job_id, "error": error_msg}
         if error_detail:
             base["error_detail"] = error_detail
+        if error_kind:
+            base["error_kind"] = error_kind
         if routing_key == QueueNames.METADATA_SYNC:
             return (
                 self.metadata_sync_queue.failed_name,
@@ -880,13 +955,12 @@ class SyncWorker:
 
     def _handle_auth_error(
         self,
-        ch,
         method,
-        properties: pika.BasicProperties,
         body: bytes,
         error_msg: str,
         job_id: str | None = None,
         error_detail: str | None = None,
+        error_kind: str | None = None,
     ) -> None:
         """Immediately fail the job. error_detail carries the traceback; error_msg stays user-facing."""
         try:
@@ -896,25 +970,19 @@ class SyncWorker:
                 job_id = message.get("job_id")
 
             built = self._build_failure_payload(
-                method.routing_key, message, job_id, error_msg, error_detail
+                method.routing_key, message, job_id, error_msg, error_detail, error_kind
             )
             if built is not None:
                 queue, payload = built
                 self.mq_client.publish(queue, payload)
 
-            ch.basic_ack(delivery_tag=method.delivery_tag)
             logger.info(f"Published auth error for job_id={job_id}")
 
         except Exception as e:
             logger.error(f"Error in auth error handler: {e}")
-            try:
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-            except Exception:
-                pass
 
     def _handle_error(
         self,
-        ch,
         method,
         body: bytes,
         job_id: str | None = None,
@@ -937,14 +1005,8 @@ class SyncWorker:
                 queue, payload = built
                 self.mq_client.publish(queue, payload)
 
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
         except Exception as e:
             logger.error(f"Error in error handler: {e}")
-            try:
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-            except Exception:
-                pass
 
     def start(self) -> None:
         try:

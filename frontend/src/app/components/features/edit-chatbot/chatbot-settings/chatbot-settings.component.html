@@ -222,6 +222,52 @@
     </div>
 
     <div class="settings-group">
+      <h4>{{ "editChatbot.piiFilter" | translate }} <span class="beta-badge">Beta</span></h4>
+      <div class="status-control">
+        <div class="status-info">
+          <strong>{{
+            chatbot().pii_filter_enabled
+              ? ("editChatbot.piiFilterEnabled" | translate)
+              : ("editChatbot.piiFilterDisabled" | translate)
+          }}</strong>
+          <p>
+            {{
+              chatbot().pii_filter_enabled
+                ? ("editChatbot.piiFilterEnabledDescription" | translate)
+                : ("editChatbot.piiFilterDisabledDescription" | translate)
+            }}
+          </p>
+          <p class="password-hint">
+            {{ "editChatbot.piiFilterLatencyNote" | translate }}
+          </p>
+        </div>
+        <label class="toggle-switch">
+          <input
+            type="checkbox"
+            [checked]="chatbot().pii_filter_enabled"
+            (change)="togglePiiFilter()"
+            [attr.aria-label]="'Toggle PII filter'"
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <a
+        class="doc-link"
+        href="https://documentation.skilltech.tools/platform/alice.skilltech.tools/guides/pii-filter/"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {{ "editChatbot.piiFilterDocumentation" | translate }}
+        <img
+          src="/icons/external-link.svg"
+          alt=""
+          width="14"
+          height="14"
+        />
+      </a>
+    </div>
+
+    <div class="settings-group">
       <h4>{{ "editChatbot.apiAccess" | translate }} <span class="beta-badge">Beta</span></h4>
       <div class="status-control">
         <div class="status-info">
@@ -316,18 +362,18 @@
           </div>
         </div>
         <a
-          class="btn btn-secondary btn-sm"
+          class="doc-link"
           href="https://documentation.skilltech.tools/platform/alice.skilltech.tools/guides/api-access/"
           target="_blank"
           rel="noopener noreferrer"
         >
+          {{ "editChatbot.apiDocumentation" | translate }}
           <img
             src="/icons/external-link.svg"
             alt=""
-            width="16"
-            height="16"
+            width="14"
+            height="14"
           />
-          {{ "editChatbot.apiDocumentation" | translate }}
         </a>
       </div>
       }

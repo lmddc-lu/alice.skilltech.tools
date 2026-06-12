@@ -42,6 +42,14 @@ export const chatStreamHandler = http.post(
         };
         signal.addEventListener('abort', abort);
 
+        // Mirror the backend: when the PII filter is on and the message looks
+        // like it carries personal data, signal that redaction happened so the
+        // chat UI shows its warning.
+        const looksLikePii = /@|\b\d{4,}\b/.test(lastMessage);
+        if (chatbot?.pii_filter_enabled && looksLikePii) {
+          controller.enqueue(encoder.encode(sseFrame({ pii_filtered: true })));
+        }
+
         const tick = () => {
           if (signal.aborted) return;
           if (i < reply.tokens.length) {

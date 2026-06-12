@@ -16,12 +16,22 @@ from app.repositories.chatbot import ChatbotRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.services.access_service import AccessService
 from app.services.citation_service import fetch_and_encode_citations
+from app.services.pii_filter_service import StreamUnredactor
 from app.services.rag_service import HayhooksMessage, chat_with_knowledgebase_stream
 
 from .router import router
 from .schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
+
+
+def _content_event(content: str) -> str:
+    """Build a minimal OpenAI-style SSE data line carrying a content delta.
+
+    Used to emit any text the unredactor was still holding when the stream
+    ends, so the final placeholder doesn't get dropped."""
+    payload = {"choices": [{"index": 0, "delta": {"content": content}}]}
+    return "data: " + json.dumps(payload, ensure_ascii=False)
 
 
 @router.post("/chatbots/{chatbot_id}/chat/stream")
@@ -72,8 +82,18 @@ async def chat_with_chatbot_stream(
     try:
         source_doc_token = f"alice-{uuid4()}"
 
+        # When the PII filter is on, the redaction map is populated by the
+        # stream generator before its first chunk; we then swap placeholders in
+        # the LLM's response back to the user's original text.
+        pii_enabled = bool(getattr(chatbot, "pii_filter_enabled", False))
+        pii_map: dict[str, str] = {}
+
         async def stream_response() -> AsyncIterator[bytes]:
             collected_text: list[str] = []
+            # Emitted once, the first time we observe that real PII was redacted
+            # from this exchange, so the client can warn the user.
+            pii_notice_sent = False
+            unredactor = StreamUnredactor(pii_map)
             stream_generator = chat_with_knowledgebase_stream(
                 # roles/keys validated in the loop above, safe to narrow
                 messages=cast(list[HayhooksMessage], req.messages),
@@ -81,11 +101,22 @@ async def chat_with_chatbot_stream(
                 chatbot=chatbot,
                 session=session,
                 source_doc_token=source_doc_token,
+                pii_unredact_map=pii_map if pii_enabled else None,
             )
             async for chunk in stream_generator:
-                if chunk:
-                    # collect content tokens so we know which citations to emit
-                    text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+                if not chunk:
+                    continue
+                text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+
+                # The redaction map is filled before the first chunk; a non-empty
+                # map means actual personal data was stripped from the user's
+                # message. Tell the client once so it can surface a warning.
+                if pii_enabled and pii_map and not pii_notice_sent:
+                    pii_notice_sent = True
+                    yield b'data: {"pii_filtered": true}\n'
+
+                if not pii_enabled:
+                    # Fast path: collect content tokens for citations, pass through.
                     for line in text.strip().split("\n"):
                         line = line.strip()
                         if not line.startswith("data:"):
@@ -102,6 +133,55 @@ async def chat_with_chatbot_stream(
                         except (json.JSONDecodeError, IndexError):
                             pass
                     yield chunk
+                    continue
+
+                # PII path: rewrite each content delta through the unredactor.
+                out = ""
+                for raw_line in text.split("\n"):
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    if not line.startswith("data:"):
+                        out += raw_line + "\n"
+                        continue
+                    payload = line[len("data:") :].strip()
+                    if payload == "[DONE]":
+                        tail = unredactor.flush()
+                        if tail:
+                            collected_text.append(tail)
+                            out += _content_event(tail) + "\n"
+                        out += "data: [DONE]\n"
+                        continue
+                    try:
+                        parsed = json.loads(payload)
+                        delta = parsed.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                    except (json.JSONDecodeError, IndexError):
+                        out += raw_line + "\n"
+                        continue
+                    if content:
+                        emitted = unredactor.feed(content)
+                        delta["content"] = emitted
+                        collected_text.append(emitted)
+                        out += "data: " + json.dumps(parsed, ensure_ascii=False) + "\n"
+                    else:
+                        out += raw_line + "\n"
+                if out:
+                    yield out.encode("utf-8")
+
+            # If the upstream ended without a [DONE], flush any held placeholder.
+            tail = unredactor.flush()
+            if tail:
+                collected_text.append(tail)
+                yield (_content_event(tail) + "\n").encode("utf-8")
+
+            if pii_enabled and unredactor.restored:
+                # Log placeholder keys only
+                logger.info(
+                    "PII unredaction: restored %d placeholder(s) in response %s",
+                    len(unredactor.restored),
+                    sorted(unredactor.restored),
+                )
 
             response_text = "".join(collected_text)
             citation_data = await fetch_and_encode_citations(

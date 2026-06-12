@@ -136,6 +136,7 @@ class ChatbotResponse(BaseModel):
     api_enabled: bool = False
     token: str | None = None
     cite_sources: bool = True
+    pii_filter_enabled: bool = False
     status: str = KnowledgeBaseStatus.READY
     model_config = ConfigDict(from_attributes=True)
 
@@ -178,6 +179,7 @@ class DetailedChatbotResponse(BaseModel):
     cite_sources: bool = True
     force_ocr: bool = False
     persist_session: bool = False
+    pii_filter_enabled: bool = False
     status: str
     last_sync_error: str | None = None
     chatbot_url: str

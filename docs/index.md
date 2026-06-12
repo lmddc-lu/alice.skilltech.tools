@@ -27,6 +27,7 @@ knowledge base and returned with citations to the source documents.
 - [How to create a custom persona for your Alice chatbot](guides/custom-persona.md)
 - [How to setup content synchronisation between Alice and Moodle](guides/moodle-sync.md)
 - [How to query an Alice chatbot from your own RAG application](guides/api-access.md)
+- [How the PII filter protects personal data in chats](guides/pii-filter.md)
 
 ## Licence
 

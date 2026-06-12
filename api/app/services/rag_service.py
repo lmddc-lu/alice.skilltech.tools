@@ -278,9 +278,34 @@ async def chat_with_knowledgebase_stream(
     chatbot: Chatbot,
     session: Session,
     source_doc_token: str | None = None,
+    pii_unredact_map: dict[str, str] | None = None,
 ) -> AsyncIterator[bytes]:
-    """Stream a chat response using the chatbot's persona."""
+    """Stream a chat response using the chatbot's persona.
+
+    When the PII filter is on, user messages are redacted before reaching the
+    LLM. If ``pii_unredact_map`` is provided, the placeholder->surface mapping is
+    written into it (in place) so the caller can reverse the redaction on the
+    streamed response. Redaction runs before the first chunk is yielded, so the
+    map is populated by the time the caller consumes any output.
+    """
     cite_sources = getattr(chatbot, "cite_sources", True)
+
+    # Redact PII from user messages before they reach the LLM when enabled.
+    # Lazy import avoids a module-level cycle (pii_filter_service imports
+    # HayhooksMessage from this module).
+    if getattr(chatbot, "pii_filter_enabled", False):
+        from app.services.pii_filter_service import redact_messages
+
+        messages, mapping = await redact_messages(messages)
+        if pii_unredact_map is not None:
+            pii_unredact_map.update(mapping)
+        if mapping:
+            # Log placeholder keys
+            logger.info(
+                "PII filter: redacted %d placeholder(s), sent %s to the LLM",
+                len(mapping),
+                sorted(mapping),
+            )
 
     async for chunk in chat_with_kb_stream(
         messages, knowledgebase_id, chatbot, session, source_doc_token, cite_sources

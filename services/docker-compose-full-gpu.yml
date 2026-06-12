@@ -158,35 +158,38 @@ services:
     restart: unless-stopped
 
 
-  presidio-analyzer:
-    image: mcr.microsoft.com/presidio-analyzer:2.2.362
-    container_name: presidio-analyzer
+  pii-filter:
+    build:
+      context: ./pii-filter
+      dockerfile: Dockerfile.gpu
+    container_name: pii-filter
     ports:
-      - "1418:3000"
+      - "1418:8000"
+    environment:
+      - PII_MODEL_NAME=${PII_MODEL_NAME}
+      - PII_DEVICE=${PII_DEVICE:-0}
+      - PII_STRIDE=${PII_STRIDE:-64}
+      - HF_HOME=/models
+    volumes:
+      - pii_model_cache:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health"]
+      # /readyz returns 503 until the model finishes loading;
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/readyz"]
       interval: 10s
       timeout: 10s
       retries: 30
-      start_period: 60s
-    restart: unless-stopped
-
-  presidio-anonymizer:
-    image: mcr.microsoft.com/presidio-anonymizer:2.2.362
-    container_name: presidio-anonymizer
-    ports:
-      - "1419:3000"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 15s
+      start_period: 300s
     restart: unless-stopped
 
 volumes:
   qdrant_data:
   valkey_data:
+  pii_model_cache:
 
 configs:
   qdrant_config:

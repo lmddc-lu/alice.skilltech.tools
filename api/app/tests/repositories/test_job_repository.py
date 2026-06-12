@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -13,6 +14,7 @@ from app.models.enums import (
 )
 from app.models.tables import (
     DataSource,
+    JobEvent,
     JobFile,
     KnowledgeBase,
     User,
@@ -704,3 +706,42 @@ class TestJobCleanup:
 
         assert deleted_count == 0
         assert job_repo.get(running_job.id) is not None
+
+    def test_cleanup_deletes_job_children(self, db: Session, test_user: User) -> None:
+        """Old jobs' JobFile and JobEvent rows are reaped, not orphaned.
+
+        jobfile/jobevent FKs have no ON DELETE CASCADE, so the repo must
+        delete children explicitly otherwise Postgres raises and the
+        JobFile rows linger as db.orphan_job_files.
+        """
+        job_repo = JobRepository(db)
+
+        old_job = job_repo.create_job(job_type=JobType.INGESTION, user_id=test_user.id)
+        job_repo.start_job(old_job.id)
+        db.add(
+            JobFile(
+                job_id=old_job.id,
+                external_file_id=str(uuid.uuid4()),
+                filename="a.pdf",
+            )
+        )
+        db.add(
+            JobFile(
+                job_id=old_job.id,
+                external_file_id=str(uuid.uuid4()),
+                filename="b.pdf",
+            )
+        )
+        db.commit()
+        job_repo.complete_job(old_job.id)
+        old_job.created_at = datetime.now(UTC) - timedelta(days=60)
+        db.commit()
+
+        deleted_count = job_repo.cleanup_old_jobs(days=30)
+
+        assert deleted_count == 1
+        assert job_repo.get(old_job.id) is None
+        assert db.exec(select(JobFile).where(JobFile.job_id == old_job.id)).all() == []
+        assert (
+            db.exec(select(JobEvent).where(JobEvent.job_id == old_job.id)).all() == []
+        )

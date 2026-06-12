@@ -26,6 +26,7 @@ class ChatbotUpdate(BaseModel):
     cite_sources: bool | None = None
     force_ocr: bool | None = None
     persist_session: bool | None = None
+    pii_filter_enabled: bool | None = None
 
 
 class ChatbotAccessRequest(BaseModel):
