@@ -33,14 +33,33 @@ services:
 
 
   docling:
-    image: ghcr.io/docling-project/docling-serve-cu130:v1.20.0
+    image: ghcr.io/docling-project/docling-serve-cu130:v1.23.0
     container_name: docling
     restart: unless-stopped
     ports:
       - "5001:5001"
     environment:
-      - DOCLING_SERVE_CONCURRENCY=${DOCLING_SERVE_CONCURRENCY:-1}
       - DOCLING_SERVE_ENABLE_UI=1
+      # --- device & threading ---
+      - DOCLING_DEVICE=cuda
+      - DOCLING_NUM_THREADS=8            # CPU threads for PDF parse (~physical cores)
+      # --- GPU batching: larger batches better utilize a single card ---
+      - DOCLING_PERF_PAGE_BATCH_SIZE=8
+      - DOCLING_SERVE_OCR_BATCH_SIZE=8
+      - DOCLING_SERVE_LAYOUT_BATCH_SIZE=8
+      - DOCLING_SERVE_TABLE_BATCH_SIZE=8
+      # --- workers: share model weights across threads to save VRAM. ---
+      # Keep UVICORN_WORKERS=1 (default): extra uvicorn workers each load a full
+      # model set and will OOM a single GPU. Scale via NUM_WORKERS/batch sizes.
+      - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=2
+      - DOCLING_SERVE_ENG_LOC_SHARE_MODELS=true
+      - DOCLING_SERVE_LOAD_MODELS_AT_BOOT=true   # avoid first-request cold start
+      # Hold both DocumentConverter variants (force_ocr on/off) warm in cache.
+      - DOCLING_SERVE_OPTIONS_CACHE_SIZE=4
+      # --- safety caps: bound runaway / oversized documents ---
+      - DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT=600
+      - DOCLING_SERVE_MAX_NUM_PAGES=2000
+      - DOCLING_SERVE_MAX_FILE_SIZE=209715200    # 200 MB
     deploy:
       resources:
         reservations:
@@ -112,6 +131,7 @@ services:
       context: ./rag-pipeline
       dockerfile: Dockerfile.gpu
     container_name: hayhooks-ingestion
+    command: ["hayhooks", "run", "--host", "0.0.0.0", "--workers", "2"]
     ports:
       - "1417:1416"
     environment:

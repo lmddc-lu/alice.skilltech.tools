@@ -39,10 +39,8 @@ def build_chatbot_avatar_url(
 ) -> str | None:
     """Build the browser-facing URL for a chatbot avatar.
 
-    Returns None when no custom avatar is set. Targets an API streaming
-    endpoint instead of a presigned MinIO URL (presigned URLs sign
-    against the internal Docker hostname and don't resolve from the
-    browser). Filename is appended as a cache-busting query param.
+    Returns None when no custom avatar is set.
+    Filename is appended as a cache-busting query param.
     """
     if not avatar_storage_path:
         return None

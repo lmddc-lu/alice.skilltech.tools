@@ -140,7 +140,7 @@ def test_s3_failure_still_commits_db_deletes(db: Session, test_user: User) -> No
     service, storage = _service()
     storage.delete_file.side_effect = RuntimeError("S3 unreachable")
 
-    # must not raise — S3 cleanup is best-effort after commit
+    # must not raise, S3 cleanup is best-effort after commit
     deleted = service.delete_files_from_selections(db, [link], [str(drop.id)])
 
     assert deleted == [str(drop.id)]

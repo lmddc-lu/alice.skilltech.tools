@@ -179,7 +179,7 @@ def classify_error_kind(error_message: str | None) -> str:
 
     Order matters: auth before connection (a Moodle auth error often contains
     "connection" too). Keep the bucket count small so the time series doesn't
-    fan out — anything unmatched goes to "other".
+    fan out, anything unmatched goes to "other".
     """
     if not error_message:
         return ERROR_KIND_OTHER

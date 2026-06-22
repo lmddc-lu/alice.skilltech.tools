@@ -85,7 +85,7 @@ class FileService:
         Deselecting a file must also delete its ``UploadedFile`` row and S3
         object, otherwise the row lingers forever as an unreferenced orphan
         (the ``db.unselected_uploaded_files`` leak). When a link's last file
-        is removed, the now-orphan FILE datasource is dropped too — unless
+        is removed, the now-orphan FILE datasource is dropped too unless
         another link still references it.
 
         DB deletes are committed in a single transaction; S3 deletes run

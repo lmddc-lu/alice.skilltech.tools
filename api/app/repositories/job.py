@@ -91,7 +91,7 @@ class JobRepository(BaseRepository[Job]):
         self._log_event(job_id, "status_change", old_status, JobStatus.RUNNING.value)
         # pending → running is the only transition that observes queue wait;
         # if the worker never reports back (job goes straight from PENDING to
-        # STALLED) we don't observe pending_seconds, by design — that case is
+        # STALLED) we don't observe pending_seconds, by design that case is
         # already counted via jobs_completed_total{status="stalled"}.
         JOB_PENDING_SECONDS.labels(job_type=job.job_type).observe(
             _job_age_seconds(job, now)

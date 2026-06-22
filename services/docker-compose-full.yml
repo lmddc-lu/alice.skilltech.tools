@@ -33,14 +33,15 @@ services:
 
 
   docling:
-    image: ghcr.io/docling-project/docling-serve:v1.20.0
+    image: ghcr.io/docling-project/docling-serve:v1.23.0
     container_name: docling
     restart: unless-stopped
     ports:
       - "5001:5001"
     environment:
-      - DOCLING_SERVE_CONCURRENCY=${DOCLING_SERVE_CONCURRENCY:-1}
       - DOCLING_SERVE_ENABLE_UI=1
+      - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=2
+      - DOCLING_SERVE_ENG_LOC_SHARE_MODELS=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
@@ -100,6 +101,7 @@ services:
       context: ./rag-pipeline
       dockerfile: Dockerfile
     container_name: hayhooks-ingestion
+    command: ["hayhooks", "run", "--host", "0.0.0.0", "--workers", "2"]
     ports:
       - "1417:1416"
     environment:

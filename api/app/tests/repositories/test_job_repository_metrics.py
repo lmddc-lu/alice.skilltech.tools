@@ -106,7 +106,7 @@ class TestEnqueueAndComplete:
         self, db: Session, test_user: User
     ) -> None:
         """complete_job short-circuits when status is already CANCELLED; the
-        metric must not fire — otherwise the cancel→complete race would
+        metric must not fire otherwise the cancel→complete race would
         produce two terminal events for one job."""
         job_repo = JobRepository(db)
         job = job_repo.create_job(job_type=JobType.INGESTION, user_id=test_user.id)

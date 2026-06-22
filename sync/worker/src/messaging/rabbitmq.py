@@ -231,7 +231,6 @@ class RabbitMQClient:
     ) -> None:
         """Pull-based consume loop with at-most-once delivery: ack at claim.
 
-
         Any non-KeyboardInterrupt exception (broker restart, network blip,
         channel closed) sleeps with exponential backoff then rebuilds the
         connection. A successful poll cycle resets the attempt counter.

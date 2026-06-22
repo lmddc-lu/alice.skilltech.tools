@@ -8,12 +8,12 @@ The XLM-R sentencepiece tokenizer plus the model's `aggregation_strategy=
 
 Both are clearly the same logical entity. We fuse them in two passes:
 
-    1. Same-type adjacency  — handles the split email / phone / IBAN case.
-    2. Name-family adjacency — FIRSTNAME / MIDDLENAME / LASTNAME spans that
+    1. Same-type adjacency: handles the split email / phone / IBAN case.
+    2. Name-family adjacency: FIRSTNAME / MIDDLENAME / LASTNAME spans that
        sit next to each other belong to one person; merge them too.
 
 Two adjacent spans are considered mergeable when the text between them is
-short (≤ ``max_gap`` characters) and contains no alphanumeric characters —
+short (<= ``max_gap`` characters) and contains no alphanumeric characters
 i.e. only whitespace or punctuation. That guards against accidentally
 fusing two genuinely separate entities ("Marie est sympa et Paul aussi").
 """
