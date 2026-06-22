@@ -397,6 +397,8 @@
         "online": "Online",
         "startConversation": "Gespräch beginnen",
         "askAnything": "Stellen Sie eine beliebige Frage zu Ihren Inhalten",
+        "searching": "Suche…",
+        "thinking": "Denkt nach…",
         "typeMessage": "Geben Sie Ihre Nachricht ein...",
         "sources": "Quellen",
         "passwordRequired": "Passwort erforderlich",
@@ -411,7 +413,8 @@
         "clearConfirm": "Diese Unterhaltung löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
         "errorProcessing": "Entschuldigung, ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
         "piiFilterWarning": "Personenbezogene Daten wurden erkannt und aus Ihrer Nachricht entfernt, bevor sie die KI erreichte. Bitte teilen Sie vorsichtshalber keine persönlichen Informationen in diesem Chat.",
-        "dismiss": "Schließen"
+        "dismiss": "Schließen",
+        "retrievedChunks": "Abgerufene Textabschnitte (Debug)"
     },
     "moodleModal": {
         "title": "Moodle-Kurse verwalten",

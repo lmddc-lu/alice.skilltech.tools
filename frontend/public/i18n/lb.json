@@ -397,6 +397,8 @@
         "online": "Online",
         "startConversation": "Gespréich ufänken",
         "askAnything": "Stellt eng beléiweg Fro iwwer Äre Contenu",
+        "searching": "Sicht…",
+        "thinking": "Iwwerleet…",
         "typeMessage": "Tippt Är Noriicht...",
         "sources": "Quellen",
         "passwordRequired": "Passwuert erfuerderlech",
@@ -411,7 +413,8 @@
         "clearConfirm": "Dëst Gespréich läschen? Dës Aktioun kann net réckgängeg gemaach ginn.",
         "errorProcessing": "Pardon, et ass e Feeler opgetrueden. Probéiert w.e.g. nach emol.",
         "piiFilterWarning": "Perséinlech Donnéeë goufen erkannt an aus Ärer Noriicht ewechgeholl, ier se bei d'KI komm ass. Als Virsiichtsmoossnam deelt w.e.g. keng perséinlech Informatiounen an dësem Chat.",
-        "dismiss": "Zoumaachen"
+        "dismiss": "Zoumaachen",
+        "retrievedChunks": "Erofgeluede Stécker (Debug)"
     },
     "moodleModal": {
         "title": "Moodle-Coursen verwalten",

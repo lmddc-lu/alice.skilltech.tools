@@ -397,6 +397,8 @@
         "online": "En ligne",
         "startConversation": "Commencer une conversation",
         "askAnything": "Posez n'importe quelle question sur votre contenu",
+        "searching": "Recherche…",
+        "thinking": "Réflexion…",
         "typeMessage": "Tapez votre message...",
         "sources": "Sources",
         "passwordRequired": "Mot de passe requis",
@@ -411,7 +413,8 @@
         "clearConfirm": "Effacer cette conversation ? Cette action est irréversible.",
         "errorProcessing": "Désolé, une erreur s'est produite. Veuillez réessayer.",
         "piiFilterWarning": "Des données personnelles ont été détectées et supprimées de votre message avant son envoi à l'IA. Par précaution, évitez de partager des informations personnelles dans cette conversation.",
-        "dismiss": "Fermer"
+        "dismiss": "Fermer",
+        "retrievedChunks": "Extraits récupérés (débogage)"
     },
     "moodleModal": {
         "title": "Gérer les cours Moodle",

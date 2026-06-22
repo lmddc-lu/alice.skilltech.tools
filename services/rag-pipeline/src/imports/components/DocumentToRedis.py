@@ -56,6 +56,10 @@ class DocumentToRedisComponent:
                     "mimetype": doc.meta.get("mime_type", "unknown"),
                     "file_id": doc.meta.get("file_id"),
                     "source_url": doc.meta.get("source_url"),
+                    # Retrieval metadata, surfaced in the admin/owner debug view.
+                    "chunk_index": doc.meta.get("chunk_index"),
+                    "total_chunks": doc.meta.get("total_chunks"),
+                    "headings": doc.meta.get("headings", []),
                 }
 
             sources.append(source)

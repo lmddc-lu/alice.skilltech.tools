@@ -36,6 +36,9 @@ class ChatbotAccessRequest(BaseModel):
 class ChatRequest(BaseModel):
     password: str | None = None
     messages: list[dict[str, str]]
+    # Opt-in for the owner/admin retrieved-chunks debug view. Only the editor's
+    # preview window sets this; honored only when the caller is owner/admin.
+    debug: bool = False
 
 
 class UpdateMoodleCoursesRequest(BaseModel):

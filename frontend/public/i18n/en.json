@@ -394,6 +394,8 @@
         "online": "Online",
         "startConversation": "Start a conversation",
         "askAnything": "Ask me anything and I'll do my best to help you!",
+        "searching": "Searching…",
+        "thinking": "Thinking…",
         "typeMessage": "Type your message...",
         "sources": "Sources",
         "loadingChatbot": "Loading chatbot...",
@@ -411,7 +413,8 @@
         "clearConfirm": "Clear this conversation? This cannot be undone.",
         "errorProcessing": "Sorry, an error occurred. Please try again.",
         "piiFilterWarning": "Personal data was detected and removed from your message before it reached the AI. As a precaution, please avoid sharing personal information in this chat.",
-        "dismiss": "Dismiss"
+        "dismiss": "Dismiss",
+        "retrievedChunks": "Retrieved chunks (debug)"
     },
     "moodleModal": {
         "title": "Manage Moodle Courses",

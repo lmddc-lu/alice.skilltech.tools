@@ -7277,7 +7277,94 @@ CHAT PAGE
           }
         }
       }
-      
+
+      // Owner/admin-only retrieved-chunks debug panel.
+      .debug-chunks {
+        margin: 0.1rem 0.5rem 0;
+
+        .debug-chunks-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          padding: 0.1rem 0.3rem;
+          border: none;
+          border-radius: 4px;
+          background: transparent;
+          color: var(--gray-500);
+          font-size: 0.7rem;
+          font-weight: 500;
+          line-height: 1;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity 0.2s, color 0.15s;
+
+          .debug-chunks-caret {
+            font-size: 0.6rem;
+          }
+
+          &:hover {
+            color: var(--gray-700);
+          }
+        }
+
+        // Keep the toggle visible while its panel is open, even off-hover.
+        &.open .debug-chunks-toggle {
+          opacity: 0.7;
+        }
+
+        .debug-chunks-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          margin-top: 0.5rem;
+        }
+
+        .debug-chunk {
+          border: 1px solid var(--gray-200);
+          border-radius: 8px;
+          background: var(--surface-ground);
+          padding: 0.5rem 0.6rem;
+
+          .debug-chunk-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.72rem;
+            color: var(--gray-600);
+
+            .debug-chunk-id {
+              font-weight: 700;
+              color: var(--primary-color);
+            }
+
+            .debug-chunk-file {
+              font-weight: 600;
+              color: var(--gray-800);
+            }
+          }
+
+          .debug-chunk-headings {
+            margin-top: 0.25rem;
+            font-size: 0.72rem;
+            font-style: italic;
+            color: var(--gray-500);
+          }
+
+          .debug-chunk-content {
+            margin: 0.4rem 0 0;
+            max-height: 16rem;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.72rem;
+            line-height: 1.4;
+            color: var(--gray-700);
+          }
+        }
+      }
+
       .message-timestamp {
         font-size: 0.75rem;
         color: var(--gray-500);
@@ -7289,7 +7376,11 @@ CHAT PAGE
       &:hover .message-timestamp {
         opacity: 1;
       }
-      
+
+      &:hover .debug-chunks-toggle {
+        opacity: 0.7;
+      }
+
       // User message styles
       &.message-user {
         justify-content: flex-end;
@@ -7370,38 +7461,40 @@ CHAT PAGE
           }
         }
         
-        // Typing indicator for assistant
-        .message-typing {
+        // "Thinking…" indicator shown while the model reasons (before the
+        // first answer token arrives — the stream sends empty content deltas
+        // during this phase).
+        .message-thinking {
           display: flex;
           align-items: center;
-          gap: 0.3rem;
+          gap: 0.5rem;
           padding: 0.6rem 0.85rem;
           background-color: var(--white);
           border: 1px solid var(--gray-200);
           border-radius: 16px;
           width: fit-content;
           min-width: 0;
-          justify-content: center;
 
-          span {
-            width: 6px;
-            height: 6px;
-            background-color: var(--primary-color);
-            border-radius: 50%;
-            animation: typingBounce 1.4s ease-in-out infinite;
-            opacity: 0.7;
-            
-            &:nth-child(1) {
-              animation-delay: 0s;
-            }
-            
-            &:nth-child(2) {
-              animation-delay: 0.2s;
-            }
-            
-            &:nth-child(3) {
-              animation-delay: 0.4s;
-            }
+          .thinking-icon {
+            flex-shrink: 0;
+            animation: thinkingPulse 1.6s ease-in-out infinite;
+          }
+
+          .thinking-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            // Animated shimmer sweeping across the label.
+            background: linear-gradient(
+              90deg,
+              var(--gray-400) 25%,
+              var(--gray-900) 50%,
+              var(--gray-400) 75%
+            );
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: thinkingShimmer 2s linear infinite;
           }
         }
       }
@@ -7552,13 +7645,22 @@ p.disclaimer{
   }
 }
 
-@keyframes typingBounce {
-  0%, 60%, 100% {
-    transform: translateY(0);
-    opacity: 0.4;
+@keyframes thinkingShimmer {
+  0% {
+    background-position: 200% 0;
   }
-  30% {
-    transform: translateY(-4px);
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes thinkingPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.15);
     opacity: 1;
   }
 }

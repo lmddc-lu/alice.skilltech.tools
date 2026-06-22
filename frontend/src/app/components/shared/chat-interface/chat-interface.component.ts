@@ -34,12 +34,28 @@ interface GroupedCitation {
   source_url?: string | null;
 }
 
+// Full retrieved chunk, only sent to chatbot owners / platform admins for
+// debugging retrieval quality. Shown in a collapsible per-message panel.
+interface DebugChunk {
+  id: number;
+  content: string;
+  score: number | null;
+  document_id?: string | null;
+  file_name: string;
+  file_id: string | null;
+  source_url?: string | null;
+  chunk_index?: number | null;
+  total_chunks?: number | null;
+  headings?: string[];
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   citations?: Citation[];
+  debugChunks?: DebugChunk[];
 }
 
 @Component({
@@ -122,6 +138,52 @@ interface ChatMessage {
                 }
               </div>
               }
+              @if (message.debugChunks?.length) {
+              <div class="debug-chunks" [class.open]="isDebugChunksOpen(message.id)">
+                <button
+                  type="button"
+                  class="debug-chunks-toggle"
+                  (click)="toggleDebugChunks(message.id)"
+                  [title]="'chat.retrievedChunks' | translate"
+                  [attr.aria-label]="'chat.retrievedChunks' | translate"
+                  [attr.aria-expanded]="isDebugChunksOpen(message.id)"
+                >
+                  <span class="debug-chunks-caret">{{
+                    isDebugChunksOpen(message.id) ? '▾' : '▸'
+                  }}</span>
+                  {{ message.debugChunks!.length }}
+                </button>
+                @if (isDebugChunksOpen(message.id)) {
+                <div class="debug-chunks-list">
+                  @for (chunk of message.debugChunks!; track chunk.id) {
+                  <div class="debug-chunk">
+                    <div class="debug-chunk-header">
+                      <span class="debug-chunk-id">#{{ chunk.id }}</span>
+                      <span class="debug-chunk-file">{{ chunk.file_name | mlang }}</span>
+                      @if (chunk.chunk_index != null) {
+                      <span class="debug-chunk-pos"
+                        >chunk {{ chunk.chunk_index
+                        }}@if (chunk.total_chunks != null) {/{{ chunk.total_chunks }}}</span
+                      >
+                      }
+                      @if (chunk.score != null) {
+                      <span class="debug-chunk-score"
+                        >score {{ chunk.score | number : '1.3-3' }}</span
+                      >
+                      }
+                    </div>
+                    @if (chunk.headings?.length) {
+                    <div class="debug-chunk-headings">
+                      {{ chunk.headings!.join(' › ') }}
+                    </div>
+                    }
+                    <pre class="debug-chunk-content">{{ chunk.content }}</pre>
+                  </div>
+                  }
+                </div>
+                }
+              </div>
+              }
               <div class="message-timestamp">
                 {{ message.timestamp | date : 'short' }}
               </div>
@@ -132,17 +194,23 @@ interface ChatMessage {
             </div>
             }
           </div>
-          } @if (showTypingIndicator()) {
+          } @if (showSearchingIndicator() || showThinkingIndicator()) {
           <div class="message message-assistant">
             <div class="message-avatar" [class.has-custom-avatar]="hasCustomAvatar()">
               <img [src]="effectiveAvatarUrl()" alt="Assistant" />
             </div>
             <div class="message-content">
-              <div class="message-typing">
-                <span></span>
-                <span></span>
-                <span></span>
+              @if (showSearchingIndicator()) {
+              <div class="message-thinking" role="status" [attr.aria-label]="'chat.searching' | translate">
+                <img src="/icons/search.svg" alt="" class="thinking-icon" width="16" height="16" />
+                <span class="thinking-label">{{ 'chat.searching' | translate }}</span>
               </div>
+              } @else {
+              <div class="message-thinking" role="status" [attr.aria-label]="'chat.thinking' | translate">
+                <img src="/icons/stars_yellow.svg" alt="" class="thinking-icon" width="16" height="16" />
+                <span class="thinking-label">{{ 'chat.thinking' | translate }}</span>
+              </div>
+              }
             </div>
           </div>
           }
@@ -267,7 +335,8 @@ export class ChatInterfaceComponent {
       }
       const payload = {
         version: ChatInterfaceComponent.STORAGE_VERSION,
-        messages: msgs,
+        // Debug chunks are transient owner/admin-only data; never persist them.
+        messages: msgs.map(({ debugChunks, ...rest }) => rest),
       };
       localStorage.setItem(this.storageKey(id), JSON.stringify(payload));
     } catch (err) {
@@ -300,6 +369,9 @@ export class ChatInterfaceComponent {
   // Where citation links open. '_parent' breaks out of an iframe to the host
   // page; '_blank' (default) opens a new tab.
   citationTarget = input<string>('_blank');
+  // Opt-in to the owner/admin retrieved-chunks debug panel. Only the editor's
+  // preview window enables it; the backend still verifies owner/admin rights.
+  showDebugChunks = input<boolean>(false);
 
   private personaAvatarUrl = computed(() => {
     switch (this.personaType()) {
@@ -325,6 +397,10 @@ export class ChatInterfaceComponent {
   messages = signal<ChatMessage[]>([]);
   userInput = signal<string>('');
   isLoading = signal<boolean>(false);
+  // Flips true once the first stream chunk arrives (even an empty content
+  // delta). Separates the pre-stream phase (request sent, server retrieving)
+  // from the thinking phase (model generating, empty deltas streaming).
+  streamStarted = signal<boolean>(false);
   isInputFocused = signal<boolean>(false);
   // True once the PII filter has actually stripped personal data from a message
   // in this conversation; drives the "don't share personal info" warning.
@@ -333,6 +409,25 @@ export class ChatInterfaceComponent {
 
   private currentAssistantMessageId: string | null = null;
 
+  // Message ids whose retrieved-chunks debug panel is expanded.
+  private expandedDebug = signal<Set<string>>(new Set());
+
+  isDebugChunksOpen(messageId: string): boolean {
+    return this.expandedDebug().has(messageId);
+  }
+
+  toggleDebugChunks(messageId: string): void {
+    this.expandedDebug.update((open) => {
+      const next = new Set(open);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  }
+
   hasStreamingMessage = computed(() => {
     const msgs = this.messages();
     if (msgs.length === 0) return false;
@@ -340,8 +435,18 @@ export class ChatInterfaceComponent {
     return lastMessage.role === 'assistant' && this.isLoading();
   });
 
-  showTypingIndicator = computed(() => {
-    return this.isLoading() && !this.hasStreamingMessage();
+  // Request sent, but no stream chunk has arrived yet: the server is
+  // retrieving context (embed query, Qdrant search, prompt build).
+  showSearchingIndicator = computed(() => {
+    return this.isLoading() && !this.streamStarted();
+  });
+
+  // Stream has started (chunks arriving) but no answer token yet: the model
+  // is reasoning, emitting empty content deltas.
+  showThinkingIndicator = computed(() => {
+    return (
+      this.isLoading() && this.streamStarted() && !this.hasStreamingMessage()
+    );
   });
 
 
@@ -443,6 +548,7 @@ export class ChatInterfaceComponent {
     this.messages.update((msgs) => [...msgs, userMessage]);
     this.userInput.set('');
     this.isLoading.set(true);
+    this.streamStarted.set(false);
     this.scrollToBottom();
 
     const apiMessages = this.messages().map((msg) => ({
@@ -461,7 +567,13 @@ export class ChatInterfaceComponent {
       const chatbotId = this.chatbotId();
       const url = `${environment.apiBaseUrl}/chatbots/${chatbotId}/chat/stream`;
       const password = this.chatbotPassword();
-      const requestBody = password ? { messages, password } : { messages };
+      const requestBody: {
+        messages: Array<{ role: string; content: string }>;
+        password?: string;
+        debug?: boolean;
+      } = { messages };
+      if (password) requestBody.password = password;
+      if (this.showDebugChunks()) requestBody.debug = true;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -508,6 +620,19 @@ export class ChatInterfaceComponent {
                 continue;
               }
 
+              // Owner/admin-only: full retrieved chunks for debugging retrieval.
+              if (parsed.debug_chunks) {
+                this.setDebugChunksOnAssistantMessage(parsed.debug_chunks);
+                continue;
+              }
+
+              // Any delta chunk, including the empty content deltas emitted
+              // while the model reasons means generation has begun. Flip out
+              // of the "searching" phase into the "thinking" phase.
+              if (parsed.choices?.[0]?.delta) {
+                this.streamStarted.set(true);
+              }
+
               if (parsed.choices?.[0]?.delta?.content) {
                 this.appendToAssistantMessage(parsed.choices[0].delta.content);
                 this.scrollToBottom();
@@ -541,6 +666,18 @@ export class ChatInterfaceComponent {
       msgs.map((msg) =>
         msg.id === this.currentAssistantMessageId
           ? { ...msg, citations }
+          : msg
+      )
+    );
+  }
+
+  private setDebugChunksOnAssistantMessage(debugChunks: DebugChunk[]): void {
+    if (!this.currentAssistantMessageId) return;
+
+    this.messages.update((msgs) =>
+      msgs.map((msg) =>
+        msg.id === this.currentAssistantMessageId
+          ? { ...msg, debugChunks }
           : msg
       )
     );

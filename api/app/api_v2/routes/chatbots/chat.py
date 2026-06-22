@@ -14,8 +14,10 @@ from app.core.rate_limit import limiter
 from app.models.enums import KnowledgeBaseStatus
 from app.repositories.chatbot import ChatbotRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
+from app.repositories.user import UserRepository
 from app.services.access_service import AccessService
-from app.services.citation_service import fetch_and_encode_citations
+from app.services.citation_service import fetch_chat_trailer_events
+from app.services.index_manifest import enforce_index_freshness
 from app.services.pii_filter_service import StreamUnredactor
 from app.services.rag_service import HayhooksMessage, chat_with_knowledgebase_stream
 
@@ -53,6 +55,16 @@ async def chat_with_chatbot_stream(
 
     AccessService.check_can_chat(chatbot, user, req.password)
 
+    # Owners and platform admins can request an extra `debug_chunks` SSE event
+    # exposing the exact chunks retrieved for the answer (debugging retrieval
+    # quality). Opt-in via req.debug, only the editor preview window sets it, so
+    # the public chat page never surfaces it even for owners/admins.
+    can_debug_chunks = bool(
+        req.debug
+        and user
+        and (chatbot.owner_id == user.id or UserRepository(session).is_admin(user))
+    )
+
     kb = kb_repo.get(chatbot.knowledge_base_id)
     if not kb:
         raise HTTPException(
@@ -64,6 +76,9 @@ async def chat_with_chatbot_stream(
             status_code=400,
             detail=f"Chatbot is not ready for chat. Status: {kb.status}",
         )
+
+    # Detect index drift (embedding/sparse config changed since this KB was built).
+    enforce_index_freshness(kb)
 
     for msg in req.messages:
         if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
@@ -184,11 +199,12 @@ async def chat_with_chatbot_stream(
                 )
 
             response_text = "".join(collected_text)
-            citation_data = await fetch_and_encode_citations(
-                source_doc_token, response_text
-            )
-            if citation_data:
-                yield citation_data
+            for event in await fetch_chat_trailer_events(
+                source_doc_token,
+                response_text,
+                include_debug_chunks=can_debug_chunks,
+            ):
+                yield event
 
         return StreamingResponse(stream_response(), media_type="text/event-stream")
 
