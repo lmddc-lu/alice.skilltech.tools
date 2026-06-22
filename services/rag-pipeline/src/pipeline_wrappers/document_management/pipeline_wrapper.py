@@ -9,6 +9,7 @@ from config import (
 )
 from hayhooks import BasePipelineWrapper
 from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
+from index_config import resolve_sparse_for_index
 from loguru import logger
 
 from .operations import (
@@ -37,15 +38,18 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
             index_name = self._default_index
 
         if index_name not in self._document_stores:
+            # match the existing collection so list/stats/delete never mismatch
+            # and raise on a sparse collection.
+            use_sparse = resolve_sparse_for_index(index_name)
             logger.info(
-                f"Creating document store for index: {index_name} with sparse embeddings: {USE_SPARSE_EMBEDDINGS}"
+                f"Creating document store for index: {index_name} with sparse embeddings: {use_sparse}"
             )
             self._document_stores[index_name] = QdrantDocumentStore(
                 url=QDRANT_URL,
                 index=index_name,
                 embedding_dim=EMBEDDING_DIM,
                 recreate_index=False,
-                use_sparse_embeddings=USE_SPARSE_EMBEDDINGS,
+                use_sparse_embeddings=use_sparse,
                 hnsw_config=QDRANT_HNSW_CONFIG,
             )
 

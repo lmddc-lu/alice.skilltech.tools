@@ -86,6 +86,7 @@ class KnowledgeBaseRepository(BaseRepository[KnowledgeBase]):
         last_sync: datetime | None = None,
         last_sync_error: str | None = None,
         user_id: UUID | None = None,
+        index_manifest: str | None = None,
     ) -> KnowledgeBase | None:
         knowledge_base = self.get(knowledge_base_id)
         if not knowledge_base:
@@ -103,6 +104,8 @@ class KnowledgeBaseRepository(BaseRepository[KnowledgeBase]):
             knowledge_base.last_sync = last_sync
         if last_sync_error is not None:
             knowledge_base.last_sync_error = last_sync_error
+        if index_manifest is not None:
+            knowledge_base.index_manifest = index_manifest
 
         self.session.commit()
         self.session.refresh(knowledge_base)

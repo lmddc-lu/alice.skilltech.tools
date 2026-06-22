@@ -19,6 +19,11 @@ from app.models.tables import (
     User,
 )
 from app.repositories.knowledge_base import KnowledgeBaseRepository
+from app.services.index_manifest import (
+    desired_manifest,
+    wire_config_for_manifest,
+    wire_embedding_config,
+)
 from app.services.rag_service import delete_knowledge_by_local_id
 
 logger = logging.getLogger(__name__)
@@ -492,6 +497,16 @@ class KnowledgebaseService:
             "datasources": datasources_data,
             "force": force,
             "force_ocr": force_ocr,
+            # A forced sync recreates the collection, so build it with the
+            # desired config (the manifest is restamped to match on completion).
+            # An incremental add must reuse the model the collection was built
+            # with (its stored manifest) so new chunks match the existing
+            # vectors; otherwise a pending model swap corrupts the collection.
+            "embedding_config": (
+                wire_embedding_config()
+                if force
+                else wire_config_for_manifest(knowledge_base.index_manifest)
+            ),
         }
 
         logger.info(f"Started knowledge base sync for {kb_id}")
@@ -520,6 +535,7 @@ class KnowledgebaseService:
         files_succeeded = message.get("files_succeeded", files_processed)
         files_failed = message.get("files_failed", 0)
         files_downloaded = message.get("files_downloaded", 0)
+        force = bool(message.get("force", False))
 
         if not kb_id:
             logger.error("Missing knowledge_base_id in KB sync completion message")
@@ -540,11 +556,21 @@ class KnowledgebaseService:
             else None
         )
 
+        # Stamp the index manifest only when the collection was (re)built under
+        # the current config: a forced sync recreates it, and a brand-new KB
+        # (no manifest yet) builds it fresh. An incremental add to an
+        # already-stamped collection leaves the manifest untouched, so a drifted
+        # collection is never silently marked as fresh. See index_manifest.
+        new_manifest = None
+        if force or knowledge_base.index_manifest is None:
+            new_manifest = desired_manifest().to_json()
+
         self.kb_repo.update_knowledge_base(
             knowledge_base_id=UUID(kb_id),
             status="ready",
             last_sync=datetime.now(),
             last_sync_error=last_sync_error,
+            index_manifest=new_manifest,
         )
 
         logger.info(

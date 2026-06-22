@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.models.enums import KnowledgeBaseStatus
 from app.models.tables import Chatbot, KnowledgeBase
+from app.services.index_manifest import wire_config_for_manifest, wire_embedding_config
 from app.services.persona_service import get_persona_for_chatbot
 
 
@@ -167,8 +168,14 @@ async def chat_with_hayhooks_stream(
     source_doc_token: str | None = None,
     skip_validation: bool = False,
     cite_sources: bool = True,
+    embedding_config: dict | None = None,
 ) -> AsyncIterator[bytes]:
-    """Stream a response from the Hayhooks RAG pipeline."""
+    """Stream a response from the Hayhooks RAG pipeline.
+
+    ``embedding_config`` is the identity to embed the query with; pass the
+    collection's stored config so it is served with the model it was built with.
+    Falls back to the desired config when omitted.
+    """
     if not skip_validation:
         await validate_collection_before_query(index_name)
 
@@ -184,6 +191,9 @@ async def chat_with_hayhooks_stream(
         "system_prompt": persona,
         "custom_id": source_doc_token if source_doc_token else "empty",
         "cite_sources": cite_sources,
+        # dictate the embedding config so the query embeds with the same model
+        # the collection was built with (must match what ingest sent).
+        "embedding_config": embedding_config or wire_embedding_config(),
     }
 
     try:
@@ -338,6 +348,11 @@ async def chat_with_kb_stream(
     persona = get_persona_for_chatbot(chatbot)
     index_name = str(knowledgebase_id)
 
+    # Query with the model this collection was actually built with (its stored
+    # manifest), not the current desired one, so a model swap stays correct
+    # until this KB is reindexed. Falls back to desired when unstamped.
+    embedding_config = wire_config_for_manifest(knowledgebase.index_manifest)
+
     # KB status was already checked above, skip the redundant Hayhooks
     # collection check; doing both doubles load under concurrency.
     async for chunk in chat_with_hayhooks_stream(
@@ -347,5 +362,6 @@ async def chat_with_kb_stream(
         source_doc_token=source_doc_token,
         skip_validation=True,
         cite_sources=cite_sources,
+        embedding_config=embedding_config,
     ):
         yield chunk

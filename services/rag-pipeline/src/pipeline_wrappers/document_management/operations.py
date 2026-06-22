@@ -53,7 +53,7 @@ def list_files(
             "total_files": len(files_list),
             "total_documents": len(all_docs),
             "index_name": index_name or default_index,
-            "hybrid_search_enabled": USE_SPARSE_EMBEDDINGS,
+            "hybrid_search_enabled": document_store.use_sparse_embeddings,
             "files": files_list,
         }
 
@@ -269,7 +269,7 @@ def get_stats(
             "mimetypes": dict(sorted(source_types.items())),
             "index_name": index_name or default_index,
             "embedding_dimension": EMBEDDING_DIM,
-            "hybrid_search_enabled": USE_SPARSE_EMBEDDINGS,
+            "hybrid_search_enabled": document_store.use_sparse_embeddings,
         }
 
     except Exception as e:

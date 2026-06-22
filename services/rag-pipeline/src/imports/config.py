@@ -34,10 +34,17 @@ LLM_ENABLE_THINKING = (
 EMBED_API_BASE = _get_env_from_colab_or_os("EMBED_API_BASE") or LLM_API_BASE
 EMBED_API_KEY = _get_env_from_colab_or_os("EMBED_API_KEY") or LLM_API_KEY or "no-key"
 EMBED_MODEL = _get_env_from_colab_or_os("EMBED_MODEL") or "qwen3-embedding:4b"
-EMBEDDING_DIM = 2560
+EMBEDDING_DIM = int(_get_env_from_colab_or_os("EMBEDDING_DIM") or "2560")
 
-SPARSE_EMBED_MODEL = "prithvida/Splade_PP_en_v1"
-USE_SPARSE_EMBEDDINGS = False
+SPARSE_EMBED_MODEL = (
+    _get_env_from_colab_or_os("SPARSE_EMBED_MODEL") or "prithvida/Splade_PP_en_v1"
+)
+# Desired default for NEW/recreated collections. Existing collections keep
+# whatever they were built with (resolved per-collection in index_config), so
+# flipping this never breaks a collection already in Qdrant.
+USE_SPARSE_EMBEDDINGS = (
+    _get_env_from_colab_or_os("USE_SPARSE_EMBEDDINGS") or "false"
+).lower() in ("true", "1", "yes")
 
 # only affects local docling, not docling-serve
 USE_GPU = (_get_env_from_colab_or_os("USE_GPU") or "false").lower() in (

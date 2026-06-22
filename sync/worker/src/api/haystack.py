@@ -55,6 +55,11 @@ class IngestionResult:
 class HaystackClient:
     base_url: str
 
+    # API-dictated embedding config ({model, dim, distance, sparse_model}),
+    # forwarded to the rag-pipeline on submit so it builds the collection with
+    # the config the control plane recorded. None => pipeline uses its own env.
+    embedding_config: dict | None = None
+
     # short on purpose: /status returns in ms, don't let a black-holed SYN stall the poller
     DEFAULT_TIMEOUT: int = 5
     SUBMIT_TIMEOUT: int = 60
@@ -135,6 +140,8 @@ class HaystackClient:
             }
             if client_job_id:
                 data["client_job_id"] = client_job_id
+            if self.embedding_config:
+                data["embedding_config"] = json.dumps(self.embedding_config)
             response = self._make_request(
                 method="POST",
                 endpoint="/document_ingestion/run",

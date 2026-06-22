@@ -17,6 +17,7 @@ from hayhooks import (
     get_last_user_message,
 )
 from haystack.dataclasses import ChatMessage
+from index_config import resolve_embedding_config, resolve_sparse_for_index
 from loguru import logger
 from RedisSessionManager import RedisSessionManager
 
@@ -45,9 +46,30 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         )
         logger.info(f"Session storage enabled: {SESSION_STORAGE_ENABLED}")
 
-    def _get_pipeline(self, index_name: str = None):
-        document_store = create_document_store(index_name or self._default_index)
-        return create_rag_pipeline(document_store, self.session_manager)
+    def _get_pipeline(self, index_name: str = None, embedding_config=None):
+        """Build a per-request pipeline. Returns (pipeline, use_sparse) so the
+        caller can shape pipeline inputs to match the collection's retriever.
+
+        ``embedding_config`` is the API-dictated config (dict or JSON string);
+        it falls back to this service's env when absent.
+        """
+        name = index_name or self._default_index
+        cfg = resolve_embedding_config(embedding_config)
+        # an existing collection's actual sparse-ness wins; the dictated config
+        # is the desired default for a not-yet-built collection.
+        use_sparse = resolve_sparse_for_index(
+            name, desired_sparse=bool(cfg["sparse_model"])
+        )
+        document_store = create_document_store(
+            name, use_sparse=use_sparse, embedding_dim=cfg["dim"]
+        )
+        pipeline = create_rag_pipeline(
+            document_store,
+            self.session_manager,
+            embed_model=cfg["model"],
+            sparse_model=cfg["sparse_model"],
+        )
+        return pipeline, use_sparse
 
     def _convert_history_to_messages(
         self, conversation_history: list[dict[str, str]] | None
@@ -79,6 +101,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         system_prompt: str | None = None,
         rag_template: str | None = None,
         cite_sources: bool = True,
+        use_sparse: bool = False,
     ) -> dict[str, Any]:
         pipeline_inputs = {
             "prompt_builder": {
@@ -94,7 +117,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         if rag_template is not None:
             pipeline_inputs["prompt_builder"]["rag_template"] = rag_template
 
-        if USE_SPARSE_EMBEDDINGS:
+        if use_sparse:
             pipeline_inputs["sparse_embedder"] = {"text": question}
             pipeline_inputs["dense_embedder"] = {"text": question}
         else:
@@ -113,6 +136,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
             system_prompt = body.get("system_prompt")
             rag_template = body.get("rag_template")
             cite_sources = body.get("cite_sources", True)
+            embedding_config = body.get("embedding_config")
 
             if not custom_chat_id:
                 timestamp = int(time.time() * 1000)
@@ -129,7 +153,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                             {"role": msg.get("role"), "content": msg.get("content", "")}
                         )
 
-            pipeline = self._get_pipeline(index_name)
+            pipeline, use_sparse = self._get_pipeline(index_name, embedding_config)
 
             retriever = pipeline.get_component("retriever")
             if hasattr(retriever, "top_k") and retriever.top_k != top_k:
@@ -143,6 +167,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                 system_prompt,
                 rag_template,
                 cite_sources,
+                use_sparse=use_sparse,
             )
 
             return async_streaming_generator(
@@ -170,13 +195,14 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         system_prompt: str | None = None,
         rag_template: str | None = None,
         cite_sources: bool = True,
+        embedding_config: dict | str | None = None,
     ) -> dict[str, Any]:
         """Answer a question with document context."""
         if top_k is None:
             top_k = TOP_K
 
         try:
-            pipeline = self._get_pipeline(index_name)
+            pipeline, use_sparse = self._get_pipeline(index_name, embedding_config)
 
             retriever = pipeline.get_component("retriever")
             if hasattr(retriever, "top_k") and retriever.top_k != top_k:
@@ -189,6 +215,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                 system_prompt=system_prompt,
                 rag_template=rag_template,
                 cite_sources=cite_sources,
+                use_sparse=use_sparse,
             )
 
             result = await pipeline.run_async(
@@ -216,7 +243,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                 "question": question,
                 "index_name": index_name or self._default_index,
                 "conversation_history": conversation_history,
-                "hybrid_search_enabled": USE_SPARSE_EMBEDDINGS,
+                "hybrid_search_enabled": use_sparse,
                 "retrieved_documents": len(documents),
                 "top_k": top_k,
                 "session_storage_enabled": SESSION_STORAGE_ENABLED,

@@ -347,6 +347,9 @@ class SyncWorker:
                 haystack_url = message["haystack_url"]
                 force = message.get("force", False)
                 force_ocr = message.get("force_ocr", False)
+                # forwarded to the rag-pipeline so it builds with the config the
+                # API recorded; absent => pipeline falls back to its own env.
+                embedding_config = message.get("embedding_config")
 
                 if not owner_email:
                     raise ValueError("owner_email is required in ingestion message")
@@ -355,6 +358,7 @@ class SyncWorker:
 
                 haystack_client = HaystackClient(
                     haystack_url,
+                    embedding_config=embedding_config,
                     STALE_TIMEOUT=self.config.haystack_stale_timeout,
                     ABSOLUTE_TIMEOUT=self.config.haystack_absolute_timeout,
                 )
@@ -446,6 +450,9 @@ class SyncWorker:
                     "files_downloaded": total_downloaded,
                     "chunks_created": sync_stats["chunks_created"],
                     "haystack_index_name": kb_name,
+                    # a forced sync recreates the Qdrant collection; the API uses
+                    # this to know it can re-stamp the KB's index manifest.
+                    "force": force,
                 }
                 self.mq_client.publish(
                     self.ingestion_queue.completed_name, completion_message

@@ -18,7 +18,6 @@ from config import (
     RAG_USER_TEMPLATE,
     SPARSE_EMBED_MODEL,
     TOP_K,
-    USE_SPARSE_EMBEDDINGS,
 )
 from haystack import AsyncPipeline
 from haystack.components.embedders import OpenAITextEmbedder
@@ -32,35 +31,52 @@ from haystack_integrations.components.retrievers.qdrant import (
     QdrantHybridRetriever,
 )
 from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
+from index_config import resolve_sparse_for_index
 
 
-def create_document_store(index_name: str) -> QdrantDocumentStore:
+def create_document_store(
+    index_name: str,
+    use_sparse: bool | None = None,
+    embedding_dim: int | None = None,
+) -> QdrantDocumentStore:
+    # Match the collection's actual sparse-ness so the store never mismatches
+    # and raises. Caller may pass a pre-resolved value to avoid re-inspecting.
+    if use_sparse is None:
+        use_sparse = resolve_sparse_for_index(index_name)
     return QdrantDocumentStore(
         url=QDRANT_URL,
         index=index_name,
-        embedding_dim=EMBEDDING_DIM,
+        embedding_dim=embedding_dim or EMBEDDING_DIM,
         recreate_index=False,
-        use_sparse_embeddings=USE_SPARSE_EMBEDDINGS,
+        use_sparse_embeddings=use_sparse,
         hnsw_config=QDRANT_HNSW_CONFIG,
     )
 
 
 def create_rag_pipeline(
-    document_store: QdrantDocumentStore, session_manager=None
+    document_store: QdrantDocumentStore,
+    session_manager=None,
+    embed_model: str | None = None,
+    sparse_model: str | None = None,
 ) -> AsyncPipeline:
-    """RAG pipeline: retrieval, prompt building, generation."""
+    """RAG pipeline: retrieval, prompt building, generation.
+
+    ``embed_model``/``sparse_model`` are the API-dictated embedder identities;
+    they fall back to this service's env when not given. They must match what
+    the collection was built with.
+    """
     pipeline = AsyncPipeline()
 
     text_embedder = OpenAITextEmbedder(
         api_key=Secret.from_token(EMBED_API_KEY),
-        model=EMBED_MODEL,
+        model=embed_model or EMBED_MODEL,
         api_base_url=EMBED_API_BASE,
     )
 
-    if USE_SPARSE_EMBEDDINGS:
+    if document_store.use_sparse_embeddings:
         pipeline.add_component(
             "sparse_embedder",
-            FastembedSparseTextEmbedder(model=SPARSE_EMBED_MODEL),
+            FastembedSparseTextEmbedder(model=sparse_model or SPARSE_EMBED_MODEL),
         )
         pipeline.add_component("dense_embedder", text_embedder)
         pipeline.add_component(

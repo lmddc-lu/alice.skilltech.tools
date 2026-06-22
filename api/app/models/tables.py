@@ -159,6 +159,11 @@ class KnowledgeBase(KnowledgeBaseBase, table=True):
     )
     chatbots: list["Chatbot"] = Relationship(back_populates="knowledge_base")
 
+    # JSON; the embedding/index config the Qdrant collection was last built
+    # with. Compared against the desired config to detect index drift before
+    # querying. See app.services.index_manifest.
+    index_manifest: str | None = Field(default=None)
+
 
 class ChatbotBase(SQLModel):
     name: str

@@ -124,6 +124,27 @@ class Settings(BaseSettings):
     HAYSTACK_INFERENCE_URL: str
     HAYSTACK_INGESTION_URL: str
 
+    # Index build configuration. These describe how Qdrant collections are
+    # built by the rag-pipeline and must mirror its config; they let the API
+    # detect "index drift" (embedding model swap, dim change, sparse toggle)
+    # before a stale collection is queried. Qdrant exposes dim and sparse-ness
+    # but NOT the embedding model, so a same-dim model swap would
+    # otherwise return silently-wrong results. Defaults match the pipeline's
+    # current values so existing collections fingerprint as up-to-date.
+    EMBEDDING_MODEL: str = "qwen3-embedding:4b"
+    EMBEDDING_DIM: int = 2560
+    EMBEDDING_DISTANCE: str = "cosine"
+    # None means sparse/hybrid retrieval is disabled.
+    SPARSE_EMBEDDING_MODEL: str | None = None
+    CHUNKER_TOKENIZER: str = "Qwen/Qwen2.5-0.5B"
+    CHUNKER_MAX_TOKENS: int = 1024
+    # Bump to force a rebuild when a quality-only change (e.g. chunking) that
+    # isn't otherwise in the fingerprint should still invalidate collections.
+    INDEX_SCHEMA_VERSION: int = 1
+    # Drift policy applied before chat: "off" ignores, "warn" logs only
+    # (default dormant), "block" rejects a stale KB with 409.
+    INDEX_DRIFT_ENFORCEMENT: Literal["off", "warn", "block"] = "warn"
+
     PII_FILTER_URL: str
 
     RABBITMQ_URL: str

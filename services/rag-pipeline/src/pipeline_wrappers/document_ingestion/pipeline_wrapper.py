@@ -42,6 +42,7 @@ from haystack_integrations.components.embedders.fastembed import (
     FastembedSparseDocumentEmbedder,
 )
 from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
+from index_config import resolve_embedding_config, resolve_sparse_for_index
 from loguru import logger
 from RedisJobStore import RedisJobStore
 
@@ -65,28 +66,43 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
         logger.info(f"Docling-serve URL: {DOCLING_SERVE_URL}")
 
     def _get_document_store(
-        self, index_name: str = None, recreate: bool = False
+        self,
+        index_name: str = None,
+        recreate: bool = False,
+        embedding_dim: int | None = None,
+        desired_sparse: bool | None = None,
     ) -> QdrantDocumentStore:
         if index_name is None:
             index_name = self._default_index
 
         if recreate or index_name not in self._document_stores:
+            # On recreate, build with the desired default (dictated by the API
+            # or this service's env); otherwise match the existing collection so
+            # adding files to a dense collection stays dense (and never
+            # mismatches and raises).
+            use_sparse = resolve_sparse_for_index(
+                index_name, recreate=recreate, desired_sparse=desired_sparse
+            )
             logger.info(
-                f"Creating document store for index: {index_name} with sparse embeddings: {USE_SPARSE_EMBEDDINGS}"
+                f"Creating document store for index: {index_name} with sparse embeddings: {use_sparse}"
             )
             self._document_stores[index_name] = QdrantDocumentStore(
                 url=QDRANT_URL,
                 index=index_name,
-                embedding_dim=EMBEDDING_DIM,
+                embedding_dim=embedding_dim or EMBEDDING_DIM,
                 recreate_index=recreate,
-                use_sparse_embeddings=USE_SPARSE_EMBEDDINGS,
+                use_sparse_embeddings=use_sparse,
                 hnsw_config=QDRANT_HNSW_CONFIG,
             )
 
         return self._document_stores[index_name]
 
     def _create_indexing_pipeline(
-        self, document_store, force_ocr: bool = False
+        self,
+        document_store,
+        force_ocr: bool = False,
+        embed_model: str | None = None,
+        sparse_model: str | None = None,
     ) -> Pipeline:
         pipeline = Pipeline()
 
@@ -118,17 +134,20 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
 
         pipeline.add_component("log_chunked", DocumentLogger("CHUNKED"))
 
-        if USE_SPARSE_EMBEDDINGS:
+        use_sparse = document_store.use_sparse_embeddings
+        if use_sparse:
             pipeline.add_component(
                 "sparse_embedder",
-                FastembedSparseDocumentEmbedder(model=SPARSE_EMBED_MODEL),
+                FastembedSparseDocumentEmbedder(
+                    model=sparse_model or SPARSE_EMBED_MODEL
+                ),
             )
 
         pipeline.add_component(
             "dense_embedder",
             OpenAIDocumentEmbedder(
                 api_key=Secret.from_token(EMBED_API_KEY),
-                model=EMBED_MODEL,
+                model=embed_model or EMBED_MODEL,
                 api_base_url=EMBED_API_BASE,
             ),
         )
@@ -144,7 +163,7 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
         pipeline.connect("converter.doc_metadata", "chunker.doc_metadata")
         pipeline.connect("chunker.documents", "log_chunked.documents")
 
-        if USE_SPARSE_EMBEDDINGS:
+        if use_sparse:
             pipeline.connect("log_chunked.documents", "sparse_embedder.documents")
             pipeline.connect("sparse_embedder", "dense_embedder")
             pipeline.connect("dense_embedder", "log_embedded.documents")
@@ -221,14 +240,26 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
         parsed_file_metadata: list[dict[str, Any]] | None,
         had_files: bool,
         force_ocr: bool = False,
+        embedding_config: dict | str | None = None,
     ) -> None:
         """Run the ingestion pipeline in a thread, updating Redis job state."""
         try:
             self.job_store.update_job(job_id, status="running", stage="converting")
 
-            document_store = self._get_document_store(index_name, recreate_index)
+            # API-dictated embedding config (falls back to env). The same config
+            # must shape both the store (dim/sparse) and the embedders (models).
+            cfg = resolve_embedding_config(embedding_config)
+            document_store = self._get_document_store(
+                index_name,
+                recreate_index,
+                embedding_dim=cfg["dim"],
+                desired_sparse=bool(cfg["sparse_model"]),
+            )
             pipeline = self._create_indexing_pipeline(
-                document_store, force_ocr=force_ocr
+                document_store,
+                force_ocr=force_ocr,
+                embed_model=cfg["model"],
+                sparse_model=cfg["sparse_model"],
             )
 
             self.job_store.update_job(
@@ -262,7 +293,7 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
                 "index_name": index_name or self._default_index,
                 "file_paths": valid_paths,
                 "upload_mode": had_files,
-                "hybrid_search_enabled": USE_SPARSE_EMBEDDINGS,
+                "hybrid_search_enabled": document_store.use_sparse_embeddings,
             }
 
             if failed_files:
@@ -303,6 +334,7 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
         action: str = "submit",
         job_id: str | None = None,
         client_job_id: str | None = None,
+        embedding_config: str | None = None,
     ) -> dict[str, Any]:
         """Run the ingestion pipeline.
 
@@ -311,6 +343,9 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
         :param client_job_id: the calling platform's job id, logged and kept
             in job metadata so this run can be correlated with the caller's
             job from either side.
+        :param embedding_config: JSON string of the API-dictated embedding
+            config ({model, dim, distance, sparse_model}); falls back to this
+            service's env when absent.
         """
         if action == "status":
             if not job_id:
@@ -390,6 +425,7 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
                     parsed_file_metadata,
                     bool(files),
                     force_ocr,
+                    embedding_config,
                 ),
                 daemon=True,
             )
