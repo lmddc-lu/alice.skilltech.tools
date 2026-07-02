@@ -83,6 +83,7 @@ class MoodleExportClient:
         offset: int = 0,
         limit: int = 50,
         include_non_enrolled: bool = False,
+        include_site: bool = False,
     ) -> dict:
         return self._make_request(
             "local_contentexport_export_all_courses",
@@ -92,6 +93,7 @@ class MoodleExportClient:
                 "offset": offset,
                 "limit": limit,
                 "include_non_enrolled": include_non_enrolled,
+                "include_site": include_site,
             },
         )
 

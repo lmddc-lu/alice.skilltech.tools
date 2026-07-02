@@ -218,6 +218,7 @@ class MoodleService:
             "offset": offset,
             "limit": min(limit, 100),
             "include_non_enrolled": 1,
+            "include_site": 1,
         }
 
         try:
@@ -327,6 +328,7 @@ class MoodleService:
             "offset": 0,
             "limit": 1000,
             "include_non_enrolled": 1,
+            "include_site": 1,
         }
 
         try:

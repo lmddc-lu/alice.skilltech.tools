@@ -114,6 +114,7 @@ class MoodleSourceAdapter(SourceAdapter):
             response = client.export_all_courses(
                 include_hidden=True,
                 include_non_enrolled=True,
+                include_site=True,
                 offset=offset,
                 limit=limit,
             )
