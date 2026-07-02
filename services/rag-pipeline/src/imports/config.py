@@ -83,6 +83,18 @@ CHUNKER_MAX_TOKENS = 1024
 QDRANT_URL = "qdrant"
 QDRANT_INDEX = "Document"
 QDRANT_HNSW_CONFIG = {"m": 16, "ef_construct": 64}
+# bound each Qdrant client call so a stale keep-alive connection (Qdrant drops
+# idle ones after ~5s) fails fast instead of black-holing until the worker's
+# 900s stale reaper.
+QDRANT_TIMEOUT = int(_get_env_from_colab_or_os("QDRANT_TIMEOUT") or "60")
+# a dropped keep-alive connection surfaces as a transient RemoteProtocolError;
+# retrying establishes a fresh connection, so the write succeeds on attempt 2.
+QDRANT_WRITE_MAX_ATTEMPTS = int(
+    _get_env_from_colab_or_os("QDRANT_WRITE_MAX_ATTEMPTS") or "3"
+)
+QDRANT_WRITE_RETRY_BACKOFF = float(
+    _get_env_from_colab_or_os("QDRANT_WRITE_RETRY_BACKOFF") or "1.0"
+)
 
 REDIS_URL = _get_env_from_colab_or_os("REDIS_URL") or "redis://redis:6379/0"
 SESSION_TTL = int(_get_env_from_colab_or_os("SESSION_TTL") or "3600")

@@ -21,6 +21,7 @@ import threading
 from config import (
     EMBED_MODEL,
     EMBEDDING_DIM,
+    QDRANT_TIMEOUT,
     QDRANT_URL,
     SPARSE_EMBED_MODEL,
     USE_SPARSE_EMBEDDINGS,
@@ -52,6 +53,7 @@ def _get_client():
                     index="__resolver_probe__",
                     embedding_dim=EMBEDDING_DIM,
                     recreate_index=False,
+                    timeout=QDRANT_TIMEOUT,
                 )
                 _client = qdrant_client.QdrantClient(**probe._prepare_client_params())
     return _client

@@ -2,10 +2,12 @@ import json
 import os
 import tempfile
 import threading
+import time
 import traceback as tb_module
 from pathlib import Path
 from typing import Any
 
+import httpx
 from components.DoclingChunker import DoclingChunker
 from components.DoclingServeConverter import DoclingServeConverter
 from config import (
@@ -26,7 +28,10 @@ from config import (
     JOB_TTL,
     QDRANT_HNSW_CONFIG,
     QDRANT_INDEX,
+    QDRANT_TIMEOUT,
     QDRANT_URL,
+    QDRANT_WRITE_MAX_ATTEMPTS,
+    QDRANT_WRITE_RETRY_BACKOFF,
     REDIS_URL,
     SPARSE_EMBED_MODEL,
     USE_SPARSE_EMBEDDINGS,
@@ -36,6 +41,7 @@ from hayhooks import BasePipelineWrapper
 from haystack import Pipeline
 from haystack.components.embedders import OpenAIDocumentEmbedder
 from haystack.components.writers import DocumentWriter
+from haystack.core.errors import PipelineRuntimeError
 from haystack.document_stores.types import DuplicatePolicy
 from haystack.utils import Secret
 from haystack_integrations.components.embedders.fastembed import (
@@ -44,6 +50,7 @@ from haystack_integrations.components.embedders.fastembed import (
 from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
 from index_config import resolve_embedding_config, resolve_sparse_for_index
 from loguru import logger
+from qdrant_client.http.exceptions import ResponseHandlingException
 from RedisJobStore import RedisJobStore
 
 from .components import DocumentLogger
@@ -93,6 +100,7 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
                 recreate_index=recreate,
                 use_sparse_embeddings=use_sparse,
                 hnsw_config=QDRANT_HNSW_CONFIG,
+                timeout=QDRANT_TIMEOUT,
             )
 
         return self._document_stores[index_name]
@@ -230,6 +238,58 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
                 path_metadata[path] = matched
         return path_metadata
 
+    @staticmethod
+    def _is_qdrant_connection_error(exc: BaseException) -> bool:
+        """True when exc (or a cause in its chain) is a transient Qdrant
+        connection failure.
+
+        Qdrant closes idle keep-alive connections after ~5s; a reused stale
+        connection surfaces as a RemoteProtocolError, wrapped by qdrant-client
+        as ResponseHandlingException and by Haystack as PipelineRuntimeError.
+        A fresh connection on retry succeeds.
+        """
+        transient = (
+            ResponseHandlingException,
+            httpx.RemoteProtocolError,
+            httpx.ConnectError,
+            httpx.ReadError,
+            httpx.WriteError,
+            httpx.PoolTimeout,
+        )
+        seen: set[int] = set()
+        current: BaseException | None = exc
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if isinstance(current, transient):
+                return True
+            current = current.__cause__ or current.__context__
+        return False
+
+    def _run_pipeline_with_qdrant_retry(
+        self, pipeline: Pipeline, pipeline_input: dict, job_id: str
+    ) -> dict:
+        """Run the pipeline, retrying only on transient Qdrant connection errors.
+
+        Any other failure (conversion, embedding) is raised immediately - only
+        the stale-keep-alive write error is worth retrying, since a fresh
+        connection resolves it. Raises the last error after exhausting attempts.
+        """
+        last_exc: BaseException | None = None
+        for attempt in range(1, QDRANT_WRITE_MAX_ATTEMPTS + 1):
+            try:
+                return pipeline.run(pipeline_input)
+            except PipelineRuntimeError as e:
+                if not self._is_qdrant_connection_error(e):
+                    raise
+                last_exc = e
+                if attempt < QDRANT_WRITE_MAX_ATTEMPTS:
+                    logger.warning(
+                        f"[Job {job_id}] Qdrant connection dropped on attempt "
+                        f"{attempt}/{QDRANT_WRITE_MAX_ATTEMPTS}, retrying: {e}"
+                    )
+                    time.sleep(QDRANT_WRITE_RETRY_BACKOFF * attempt)
+        raise last_exc
+
     def _run_pipeline_background(
         self,
         job_id: str,
@@ -274,7 +334,9 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
                 pipeline_input["converter"]["path_metadata"] = (
                     self._build_path_metadata(valid_paths, parsed_file_metadata)
                 )
-            result = pipeline.run(pipeline_input)
+            result = self._run_pipeline_with_qdrant_retry(
+                pipeline, pipeline_input, job_id
+            )
 
             self.job_store.update_job(
                 job_id, status="running", stage="finalizing", progress_pct=90

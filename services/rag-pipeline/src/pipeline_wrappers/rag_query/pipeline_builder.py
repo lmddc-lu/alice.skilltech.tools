@@ -14,6 +14,7 @@ from config import (
     LLM_TOP_K,
     LLM_TOP_P,
     QDRANT_HNSW_CONFIG,
+    QDRANT_TIMEOUT,
     QDRANT_URL,
     RAG_USER_TEMPLATE,
     SPARSE_EMBED_MODEL,
@@ -50,6 +51,7 @@ def create_document_store(
         recreate_index=False,
         use_sparse_embeddings=use_sparse,
         hnsw_config=QDRANT_HNSW_CONFIG,
+        timeout=QDRANT_TIMEOUT,
     )
 
 

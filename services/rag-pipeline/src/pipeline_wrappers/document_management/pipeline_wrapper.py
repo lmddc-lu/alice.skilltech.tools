@@ -4,6 +4,7 @@ from config import (
     EMBEDDING_DIM,
     QDRANT_HNSW_CONFIG,
     QDRANT_INDEX,
+    QDRANT_TIMEOUT,
     QDRANT_URL,
     USE_SPARSE_EMBEDDINGS,
 )
@@ -51,6 +52,7 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
                 recreate_index=False,
                 use_sparse_embeddings=use_sparse,
                 hnsw_config=QDRANT_HNSW_CONFIG,
+                timeout=QDRANT_TIMEOUT,
             )
 
         return self._document_stores[index_name]
