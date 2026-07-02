@@ -262,12 +262,18 @@ class MoodleCourseFileDetail(BaseModel):
     download_url: str = ""
 
 
+class MoodleGlossaryEntryDetail(BaseModel):
+    id: str
+    concept: str = ""
+
+
 class MoodleCourseActivityDetail(BaseModel):
     id: str
     name: str
     type: str = "unknown"
     description: str = ""
     files: list[MoodleCourseFileDetail] = []
+    entries: list[MoodleGlossaryEntryDetail] = []
     has_indexed_content: bool = False
 
 

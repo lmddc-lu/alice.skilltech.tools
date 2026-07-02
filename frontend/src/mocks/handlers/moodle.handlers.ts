@@ -37,11 +37,12 @@ export const moodleHandlers = [
     const activityId = url.searchParams.get('activity_id');
     const fileId = url.searchParams.get('file_id');
     const sectionId = url.searchParams.get('section_id');
-    const label = fileId ?? activityId ?? sectionId ?? (params['courseId'] as string);
+    const entryId = url.searchParams.get('entry_id');
+    const label = fileId ?? entryId ?? activityId ?? sectionId ?? (params['courseId'] as string);
     return HttpResponse.json({
       file_name: `moodle-${label}.pdf`,
       total_chunks: 2,
-      content: `# Contenu Moodle ${label}\n\nContenu de démonstration provenant de Moodle.\n\n- Section: ${sectionId ?? '—'}\n- Activité: ${activityId ?? '—'}\n- Fichier: ${fileId ?? '—'}\n`,
+      content: `# Contenu Moodle ${label}\n\nContenu de démonstration provenant de Moodle.\n\n- Section: ${sectionId ?? '—'}\n- Activité: ${activityId ?? '—'}\n- Fichier: ${fileId ?? '—'}\n- Entrée de glossaire: ${entryId ?? '—'}\n`,
     });
   }),
 ];

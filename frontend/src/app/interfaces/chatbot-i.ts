@@ -88,12 +88,18 @@ export interface MoodleActivityFile {
   download_url: string;
 }
 
+export interface MoodleGlossaryEntry {
+  id: string;
+  concept: string;
+}
+
 export interface MoodleActivity {
   id: string;
   name: string;
   type: string;
   description: string;
   files: MoodleActivityFile[];
+  entries: MoodleGlossaryEntry[];
   has_indexed_content: boolean;
 }
 

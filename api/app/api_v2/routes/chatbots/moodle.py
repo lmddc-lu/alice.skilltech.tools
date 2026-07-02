@@ -224,6 +224,7 @@ async def get_moodle_parsed_content(
     activity_id: str | None = Query(default=None),
     file_id: str | None = Query(default=None),
     section_id: str | None = Query(default=None),
+    entry_id: str | None = Query(default=None),
 ) -> dict[str, Any]:
     """Return parsed text of a Moodle activity or file from the vector store.
 
@@ -231,6 +232,7 @@ async def get_moodle_parsed_content(
     - activity text: moodle_activity_{course_id}_{activity_id}
     - attached file: moodle_file_{course_id}_{activity_id}_{file_id}
     - section text: moodle_section_{course_id}_{section_id}
+    - glossary entry: moodle_glossary_{course_id}_{activity_id}_{entry_id}
     """
     try:
         chatbot_uuid = UUID(chatbot_id)
@@ -250,6 +252,8 @@ async def get_moodle_parsed_content(
     lookup_file_id = None
     if file_id and activity_id:
         lookup_file_id = f"moodle_file_{course_id}_{activity_id}_{file_id}"
+    elif entry_id and activity_id:
+        lookup_file_id = f"moodle_glossary_{course_id}_{activity_id}_{entry_id}"
     elif activity_id:
         lookup_file_id = f"moodle_activity_{course_id}_{activity_id}"
     elif section_id:
@@ -257,7 +261,10 @@ async def get_moodle_parsed_content(
     else:
         raise HTTPException(
             status_code=400,
-            detail="One of activity_id, file_id+activity_id, or section_id is required",
+            detail=(
+                "One of activity_id, file_id+activity_id, "
+                "entry_id+activity_id, or section_id is required"
+            ),
         )
 
     index_name = str(chatbot.knowledge_base_id)

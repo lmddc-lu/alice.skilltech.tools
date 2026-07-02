@@ -196,6 +196,21 @@ class MoodleSourceAdapter(SourceAdapter):
                     "files": [],
                 }
 
+                # expose glossary entries (id + concept) so the API can offer
+                # per-entry browsing; definitions live in the indexed documents
+                content_data = activity.get("content_data")
+                if (
+                    isinstance(content_data, dict)
+                    and content_data.get("type") == "glossary"
+                ):
+                    activity_info["entries"] = [
+                        {
+                            "id": str(entry.get("id", "")),
+                            "concept": entry.get("concept", ""),
+                        }
+                        for entry in content_data.get("entries") or []
+                    ]
+
                 for file_info in activity.get("files", []):
                     file_id = str(file_info.get("id"))
                     file_data = {
@@ -444,6 +459,19 @@ class MoodleSourceAdapter(SourceAdapter):
                 activity_name = activity.get("name", "Unnamed Activity")
                 content_data = activity.get("content_data", {})
 
+                # glossaries carry term/definition pairs in content_data.entries
+                # rather than a content body; emit one document per entry so each
+                # concept embeds as its own vector instead of the whole glossary
+                # collapsing into a single merged chunk.
+                if (
+                    isinstance(content_data, dict)
+                    and content_data.get("type") == "glossary"
+                ):
+                    results.extend(
+                        self._extract_glossary_entries(course, activity, temp_dir)
+                    )
+                    continue
+
                 # merge content_data.content and description so the sanitizer
                 # can resolve @@PLUGINFILE@@ refs from either side (mod_page
                 # often splits body and embedded image across the two). Skip
@@ -489,6 +517,56 @@ class MoodleSourceAdapter(SourceAdapter):
         logger.info(
             f"Extracted {len(results)} text content items from course {course_name}"
         )
+        return results
+
+    def _extract_glossary_entries(
+        self, course: dict, activity: dict, temp_dir: Path
+    ) -> list[dict]:
+        """Emit one HTML document per glossary entry.
+
+        Each entry (concept + definition) becomes its own document so it
+        embeds as a self-contained vector rather than the whole glossary
+        collapsing into a single chunk. Entries are always emitted, with no
+        minimum-length threshold, since a short term/definition pair is still
+        a useful retrieval unit.
+        """
+        course_name = course.get("fullname", "Unknown Course")
+        course_id = str(course["id"])
+        activity_id = str(activity.get("id", ""))
+        activity_name = activity.get("name", "Unnamed Activity")
+        activity_url = activity.get("activity_url", "")
+        content_data = activity.get("content_data") or {}
+        entries = content_data.get("entries") or []
+
+        results: list[dict] = []
+        for entry in entries:
+            concept = (entry.get("concept") or "").strip()
+            definition = entry.get("definition") or ""
+            if not concept and not definition.strip():
+                continue
+            entry_id = str(entry.get("id", ""))
+
+            html_content = (
+                f"<h1>{course_name} &gt; {activity_name} &gt; {concept}</h1>\n"
+                f"<h2>{concept}</h2>\n{self.sanitize_html(definition)}"
+            )
+            filename = f"moodle_glossary_{activity_id}_{entry_id}.html"
+            file_path = temp_dir / filename
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
+
+            results.append(
+                {
+                    "local_path": file_path,
+                    "storage_filename": filename,
+                    "filename": f"{course_name} > {activity_name} > {concept}",
+                    "source_url": activity_url,
+                    "mime_type": "text/html",
+                    "file_id": (
+                        f"moodle_glossary_{course_id}_{activity_id}_{entry_id}"
+                    ),
+                }
+            )
         return results
 
     def _download_entire_course(
@@ -679,7 +757,7 @@ class MoodleSourceAdapter(SourceAdapter):
         derived from the live Moodle export, so only files genuinely
         removed/replaced upstream are pruned; the manifest is always kept. Only
         reached after a successful export, so an empty expected set means the
-        course was genuinely emptied upstream — its stale objects are still
+        course was genuinely emptied upstream, its stale objects are still
         pruned (logged at warning so a mass delete stays visible).
         """
         try:

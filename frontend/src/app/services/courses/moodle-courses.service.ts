@@ -66,12 +66,13 @@ export class MoodleCoursesService {
   getMoodleParsedContent(
     chatbotId: string,
     courseId: string,
-    opts: { activityId?: string; fileId?: string; sectionId?: string }
+    opts: { activityId?: string; fileId?: string; sectionId?: string; entryId?: string }
   ): Observable<FileParsedContent> {
     const params: Record<string, string> = {};
     if (opts.activityId) params['activity_id'] = opts.activityId;
     if (opts.fileId) params['file_id'] = opts.fileId;
     if (opts.sectionId) params['section_id'] = opts.sectionId;
+    if (opts.entryId) params['entry_id'] = opts.entryId;
 
     return this.http.get<FileParsedContent>(
       `/api/v2/chatbots/${chatbotId}/moodle-content/${courseId}/parsed`,

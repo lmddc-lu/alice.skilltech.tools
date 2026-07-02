@@ -124,6 +124,8 @@ export class MoodleContentBrowserComponent {
       this.loadActivityContent(node);
     } else if (node.type === 'file') {
       this.loadFileContent(node);
+    } else if (node.type === 'glossary-entry') {
+      this.loadGlossaryEntryContent(node);
     }
   }
 
@@ -214,6 +216,22 @@ export class MoodleContentBrowserComponent {
       },
     }));
 
+    // glossary entries are indexed one document per entry, so each one
+    // gets its own browsable node
+    const entryNodes: TreeNode[] = activity.entries.map((entry) => ({
+      name: this.mlang(entry.concept),
+      value: `glossary-entry:${courseId}:${activity.id}:${entry.id}`,
+      icon: '/icons/book-open.svg',
+      type: 'glossary-entry',
+      data: {
+        courseId,
+        activityId: activity.id,
+        entryId: entry.id,
+        moodleUrl,
+      },
+    }));
+    children.push(...entryNodes);
+
     const value = `activity:${courseId}:${activity.id}`;
     return {
       name: this.mlang(activity.name),
@@ -270,6 +288,34 @@ export class MoodleContentBrowserComponent {
     this.moodleService
       .getMoodleParsedContent(this.chatbotId(), node.data?.['courseId'] as string, {
         activityId: node.data?.['activityId'] as string,
+      })
+      .subscribe({
+        next: (result) => {
+          this.preview.set({
+            type: 'content',
+            fileName: node.name,
+            content: result.content,
+            totalChunks: result.total_chunks,
+            externalUrl: (node.data?.['moodleUrl'] as string) || null,
+          });
+        },
+        error: (err) => {
+          if (err.status === 404) {
+            this.preview.set({ type: 'no-content', fileName: node.name });
+          } else {
+            this.preview.set({ type: 'error', fileName: node.name });
+          }
+        },
+      });
+  }
+
+  private loadGlossaryEntryContent(node: TreeNode): void {
+    this.preview.set({ type: 'loading', fileName: node.name });
+
+    this.moodleService
+      .getMoodleParsedContent(this.chatbotId(), node.data?.['courseId'] as string, {
+        activityId: node.data?.['activityId'] as string,
+        entryId: node.data?.['entryId'] as string,
       })
       .subscribe({
         next: (result) => {

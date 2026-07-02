@@ -19,6 +19,7 @@ from app.models.schemas import (
     MoodleCourseFileDetail,
     MoodleCourseSectionDetail,
     MoodleCourseStructureResponse,
+    MoodleGlossaryEntryDetail,
 )
 from app.models.tables import (
     Chatbot,
@@ -307,6 +308,15 @@ class ChatbotService:
                             )
                             for f in act_data.get("files", [])
                         ]
+                        # glossary entries are indexed one document per entry
+                        # and browsed individually, not via the activity itself
+                        entries = [
+                            MoodleGlossaryEntryDetail(
+                                id=str(entry.get("id", "")),
+                                concept=entry.get("concept", ""),
+                            )
+                            for entry in act_data.get("entries", [])
+                        ]
                         # mirrors the worker's 50-char threshold for text content
                         desc = act_data.get("description", "")
                         plain = re.sub(r"<[^>]+>", "", desc).strip()
@@ -317,6 +327,7 @@ class ChatbotService:
                                 type=act_data.get("type", "unknown"),
                                 description=desc,
                                 files=files,
+                                entries=entries,
                                 has_indexed_content=len(plain) >= 50 or len(files) > 0,
                             )
                         )
