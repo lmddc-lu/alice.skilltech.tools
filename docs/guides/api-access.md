@@ -39,7 +39,7 @@ Authenticate with a standard `Authorization: Bearer <api_key>` header. The reque
 Fields:
 
 - `messages` (required): an array of `{role, content}` objects. `role` is one of `user`, `assistant`, or `system`. To carry a multi-turn conversation, send the full history each request.
-- `stream` (optional, default `true`): if `true`, the response is a Server-Sent Events stream; if `false`, you get a single JSON response.
+- `stream` (optional, default `false`): if `true`, the response is a Server-Sent Events stream; if `false`, you get a single JSON response.
 - `model` (optional, default `"default"`): accepted for OpenAI compatibility but ignored. The chatbot's configured model is always used.
 
 ### Example: non-streaming with curl
@@ -129,7 +129,7 @@ Citations are not part of the OpenAI schema, so the SDK will not surface them. T
 
 ### Example: streaming
 
-Set `"stream": true` (the default) to receive a Server-Sent Events response. The body is a sequence of `data: …` lines with the same delta shape OpenAI uses (some OpenAI-compatible fields such as `reasoning_content`, `tool_calls` and `refusal` are always present but usually `null`):
+Set `"stream": true` to receive a Server-Sent Events response. The body is a sequence of `data: …` lines with the same delta shape OpenAI uses (some OpenAI-compatible fields such as `reasoning_content`, `tool_calls` and `refusal` are always present but usually `null`):
 
 ```
 data: {"id":"chatcmpl-…","object":"chat.completion.chunk","created":1781080141,"model":"Alice kb","choices":[{"index":0,"delta":{"role":"assistant","content":"Alice","reasoning_content":null,"tool_calls":null,"refusal":null},"finish_reason":null,"logprobs":null,"message":null}],"usage":null,"system_fingerprint":null}

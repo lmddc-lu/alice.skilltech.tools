@@ -36,7 +36,7 @@ class OpenAIChatMessage(BaseModel):
 class OpenAIChatRequest(BaseModel):
     messages: list[OpenAIChatMessage]
     model: str = "default"
-    stream: bool = True
+    stream: bool = False
 
 
 def _resolve_chatbot(session: Session, token: str) -> Chatbot:
