@@ -39,7 +39,7 @@ class TestRAGPromptBuilder:
     def test_cite_sources_true_includes_citation_rule(self, builder_cls):
         builder = builder_cls()
         result = builder.run(query="hi", cite_sources=True)
-        assert "cite them using [1], [2]" in result["prompt"][0].content
+        assert "Cite them using [1], [2]" in result["prompt"][0].content
 
     def test_cite_sources_false_omits_citation_rule(self, builder_cls):
         builder = builder_cls()

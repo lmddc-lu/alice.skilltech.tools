@@ -47,6 +47,10 @@ class TestFormatSources:
             "mimetype": "application/pdf",
             "file_id": "f-1",
             "source_url": "https://example.com/r.pdf",
+            # retrieval metadata for the admin/owner debug view
+            "chunk_index": None,
+            "total_chunks": None,
+            "headings": [],
         }
 
     def test_falls_back_from_filename_to_file_name(self, component_cls):
