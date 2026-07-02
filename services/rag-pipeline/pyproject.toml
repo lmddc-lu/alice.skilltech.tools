@@ -10,8 +10,8 @@ dependencies = [
     "fastembed-haystack==2.1.0",
     "redis==7.4.0",
     "httpx==0.28.1",
-    "docling-core==2.70.2",
-    "docling==2.82.0",
+    "docling-core==2.83.1",
+    "docling==2.104.0",
 ]
 
 [dependency-groups]

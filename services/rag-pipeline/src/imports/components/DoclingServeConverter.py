@@ -306,28 +306,6 @@ class DoclingServeConverter:
                 )
                 display_name = file_meta.get("filename") or file_path.name
 
-                # TODO: drop when docling-serve supports .txt as InputFormat.
-                # Not supported as of docling==2.82.0 / docling-core==2.70.2;
-                # https://github.com/docling-project/docling/releases/tag/v2.81.0
-                # has the feature but docling-serve still needs to update.
-                # Shim: rewrite .txt to a temporary .md so docling-serve accepts it.
-                md_shim_path: Path | None = None
-                if file_path.suffix.lower() == ".txt":
-                    try:
-                        text_content = file_path.read_text(encoding="utf-8")
-                        md_shim_path = file_path.with_suffix(".md")
-                        md_shim_path.write_text(text_content, encoding="utf-8")
-                        file_path = md_shim_path
-                        logger.info(
-                            f"Converted {path} to .md for docling-serve compatibility"
-                        )
-                    except Exception as e:
-                        logger.error(
-                            f"Error converting text file {display_name} to .md: {e}"
-                        )
-                        failed_files.append({"filename": display_name, "error": str(e)})
-                        continue
-
                 try:
                     logger.info(f"Submitting file to docling-serve: {display_name}")
 
@@ -359,8 +337,7 @@ class DoclingServeConverter:
                         )
                         continue
 
-                    # restore user-facing filename (undoes the .txt to .md shim
-                    # and any other rewrites done for docling-serve).
+                    # restore user-facing filename from metadata.
                     docling_doc.origin.filename = display_name
 
                     docling_documents.append(docling_doc)
@@ -384,14 +361,6 @@ class DoclingServeConverter:
                 except Exception as e:
                     logger.error(f"Error converting {display_name}: {e}")
                     failed_files.append({"filename": display_name, "error": str(e)})
-                finally:
-                    if md_shim_path is not None and md_shim_path.exists():
-                        try:
-                            md_shim_path.unlink()
-                        except OSError as cleanup_err:
-                            logger.warning(
-                                f"Could not remove .md shim {md_shim_path}: {cleanup_err}"
-                            )
 
         if failed_files:
             logger.warning(
