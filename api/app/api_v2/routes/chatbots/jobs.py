@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from app.api_v2.deps import SessionDep, UserDep
-from app.models.enums import KnowledgeBaseStatus, ReindexFrequency
+from app.models.enums import KnowledgeBaseStatus, ReindexFrequency, SyncErrorCode
 from app.repositories.chatbot import ChatbotRepository
 from app.repositories.job import JobRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
@@ -90,7 +90,7 @@ async def cancel_chatbot_indexing(
 
     # set KB to error so the owner can retry later
     kb.status = KnowledgeBaseStatus.ERROR
-    kb.last_sync_error = "Indexing cancelled by user"
+    kb.last_sync_error = SyncErrorCode.CANCELLED
     session.commit()
 
     return {

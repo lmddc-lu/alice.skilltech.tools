@@ -352,6 +352,14 @@
         "passwordSet": "Passwort ist festgelegt",
         "changePassword": "Passwort ändern",
         "persistSession": "Gesprächsspeicher",
+        "syncErrorTitle": "Letzte Synchronisierung fehlgeschlagen",
+        "syncError": {
+          "stalled": "Die letzte Synchronisierung wurde nicht rechtzeitig abgeschlossen. Bitte starten Sie die Synchronisierung erneut.",
+          "cancelled": "Sie haben die letzte Synchronisierung abgebrochen. Sie können sie jederzeit erneut starten.",
+          "failed": "Bei der letzten Synchronisierung ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut und wenden Sie sich an den Support, falls das Problem weiterhin besteht.",
+          "partialFailure": "Die Synchronisierung wurde abgeschlossen, aber einige Dateien konnten nicht verarbeitet werden.",
+          "generic": "Die letzte Synchronisierung ist fehlgeschlagen. Bitte versuchen Sie es erneut und wenden Sie sich an den Support, falls das Problem weiterhin besteht."
+        },
         "persistSessionEnabled": "Im Browser gespeichert",
         "persistSessionDisabled": "Beim Neuladen verworfen",
         "persistSessionEnabledDescription": "Besucher behalten ihr Gespräch nach einem Neuladen (im localStorage ihres Browsers gespeichert)",

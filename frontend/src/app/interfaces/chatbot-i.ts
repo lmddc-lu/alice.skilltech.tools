@@ -147,6 +147,7 @@ export interface ChatbotItem {
   api_enabled: boolean;
   token: string | null;
   status: ChatbotStatus;
+  last_sync_error: string | null;
   chatbot_url: string;
   chatbot_token: string;
   datasource_types: DatasourceType[];

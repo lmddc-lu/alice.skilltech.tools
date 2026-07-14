@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.storage import StorageManager
-from app.models.enums import KnowledgeBaseStatus, SourceType
+from app.models.enums import KnowledgeBaseStatus, SourceType, SyncErrorCode
 from app.models.schemas import KnowledgeBaseResponse
 from app.models.tables import (
     Chatbot,
@@ -547,14 +547,9 @@ class KnowledgebaseService:
             return
 
         # surface partial failures on the KB so the user notices without
-        # drilling into job detail. empty on full success, warning text
-        # on partial
-        last_sync_error = (
-            f"Sync completed with {files_failed} file failure(s); "
-            f"see job detail for per-file errors"
-            if files_failed
-            else None
-        )
+        # drilling into job detail. empty on full success, a code on partial;
+        # the failed-file count is recomputed client-side from the file states
+        last_sync_error = SyncErrorCode.PARTIAL_FAILURE if files_failed else None
 
         # Stamp the index manifest only when the collection was (re)built under
         # the current config: a forced sync recreates it, and a brand-new KB
@@ -596,7 +591,7 @@ class KnowledgebaseService:
         self.kb_repo.update_knowledge_base(
             knowledge_base_id=UUID(kb_id),
             status="error",
-            last_sync_error=error_message,
+            last_sync_error=SyncErrorCode.FAILED,
         )
 
         logger.warning(

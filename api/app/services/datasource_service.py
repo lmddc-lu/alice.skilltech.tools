@@ -10,7 +10,12 @@ from fastapi import HTTPException
 from sqlmodel import Session, col, select
 
 from app.core.storage import StorageManager
-from app.models.enums import DataSourceSyncStatus, SourceType, UserRole
+from app.models.enums import (
+    DataSourceSyncStatus,
+    SourceType,
+    SyncErrorCode,
+    UserRole,
+)
 from app.models.schemas import (
     DataSourceBaseModel,
     DataSourceCreate,
@@ -321,7 +326,7 @@ class DatasourceService:
             return
 
         current_ds.sync_status = DataSourceSyncStatus.ERROR
-        current_ds.last_sync_error = error_message
+        current_ds.last_sync_error = SyncErrorCode.FAILED
         self.session.commit()
         logger.info(
             f"Updated datasource {datasource_id} status: error - {error_message}"
@@ -518,7 +523,7 @@ class DatasourceService:
             return
 
         datasource.sync_status = DataSourceSyncStatus.ERROR
-        datasource.last_sync_error = error_message
+        datasource.last_sync_error = SyncErrorCode.FAILED
         self.session.commit()
 
         logger.warning(

@@ -13,7 +13,12 @@ from app.api_v2.deps import (
 )
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.models.enums import ChatbotPersonaType, KnowledgeBaseStatus, SourceType
+from app.models.enums import (
+    ChatbotPersonaType,
+    KnowledgeBaseStatus,
+    SourceType,
+    SyncErrorCode,
+)
 from app.models.schemas import (
     DataSourceCreate,
     DetailedChatbotResponse,
@@ -149,7 +154,7 @@ async def create_chatbot_from_files(
         # exception path marks the KB ERROR so the user can retry from the
         # Synchronize button. surface the error so the UI doesn't pretend
         # the sync started.
-        reindex_ok, reindex_error = await indexing_service.trigger_reindex_safe(
+        reindex_ok, _ = await indexing_service.trigger_reindex_safe(
             session=session,
             knowledge_base_id=knowledge_base.id,
             user=user,
@@ -176,7 +181,7 @@ async def create_chatbot_from_files(
                 if reindex_ok
                 else KnowledgeBaseStatus.ERROR
             ),
-            last_sync_error=reindex_error,
+            last_sync_error=None if reindex_ok else SyncErrorCode.FAILED,
             course_count=len(uploaded_files),
             chatbot_token="",
             chatbot_url=f"{settings.FRONTEND_HOST}/chat/{chatbot.id}",
@@ -344,7 +349,7 @@ async def create_chatbot_from_moodle(
 
         # see create_chatbot_from_files for why a publish failure does not
         # roll back the chatbot
-        reindex_ok, reindex_error = await indexing_service.trigger_reindex_safe(
+        reindex_ok, _ = await indexing_service.trigger_reindex_safe(
             session=session,
             knowledge_base_id=knowledge_base.id,
             user=user,
@@ -371,7 +376,7 @@ async def create_chatbot_from_moodle(
                 if reindex_ok
                 else KnowledgeBaseStatus.ERROR
             ),
-            last_sync_error=reindex_error,
+            last_sync_error=None if reindex_ok else SyncErrorCode.FAILED,
             course_count=total_selections,
             chatbot_token="",
             chatbot_url=f"{settings.FRONTEND_HOST}/chat/{chatbot.id}",

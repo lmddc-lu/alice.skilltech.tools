@@ -114,6 +114,26 @@ class JobFileErrorCode(StrEnum):
     INGESTION_TIMEOUT = "ingestion_timeout"
 
 
+class SyncErrorCode(StrEnum):
+    """Stable machine-readable reason a knowledge base or datasource sync
+    failed.
+
+    Stored in ``last_sync_error`` in place of free text so the UI can render a
+    translated, user-friendly message keyed on the code. Technical detail stays
+    in the logs and on ``Job.error_message`` for operators. The frontend falls
+    back to a generic message for unknown or legacy (pre-code) values.
+    """
+
+    # job stopped making progress, timed out, or was orphaned by an API restart
+    STALLED = "stalled"
+    # cancelled by the user
+    CANCELLED = "cancelled"
+    # sync/indexing failed before or during processing
+    FAILED = "failed"
+    # completed, but some files could not be processed
+    PARTIAL_FAILURE = "partial_failure"
+
+
 # terminal states for progress tallies
 JOB_FILE_DONE_STATES = frozenset(
     {JobFileState.INGESTED.value, JobFileState.SKIPPED.value, JobFileState.FAILED.value}

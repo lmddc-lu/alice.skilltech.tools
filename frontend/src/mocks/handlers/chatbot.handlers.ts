@@ -75,6 +75,7 @@ function newChatbot(
     api_enabled: false,
     token: null,
     status: ChatbotStatus.PROCESSING,
+    last_sync_error: null,
     chatbot_url: `https://example.com/chat/${id}`,
     chatbot_token: `token-${id}`,
     datasource_types: datasourceTypes,

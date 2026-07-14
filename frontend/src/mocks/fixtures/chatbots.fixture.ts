@@ -15,6 +15,7 @@ export const mockChatbotReadyBasic: ChatbotItem = {
   api_enabled: false,
   token: null,
   status: ChatbotStatus.READY,
+  last_sync_error: null,
   chatbot_url: 'https://example.com/chat/cb-ready-1',
   chatbot_token: 'token-ready-1',
   datasource_types: ['FILE'],
@@ -53,6 +54,7 @@ export const mockChatbotProcessing: ChatbotItem = {
   chatbot_url: 'https://example.com/chat/cb-processing-1',
   chatbot_token: 'token-processing-1',
   datasource_types: ['FILE'],
+  last_sync_error: null,
   prompt_suggestions: null,
   cite_sources: true,
   force_ocr: false,
@@ -87,6 +89,9 @@ export const mockChatbotError: ChatbotItem = {
   prompt_suggestions: ['Définition de l\'inflation ?'],
   cite_sources: false,
   force_ocr: true,
+  last_sync_error:
+    'Token lacks download permission for course 34 (\'Sciences Éco\'): '
+    + 'all 3 file(s) denied and no text content available',
   persist_session: false,
   pii_filter_enabled: false,
   avatar_storage_path: null,

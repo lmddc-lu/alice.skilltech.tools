@@ -8,7 +8,13 @@ from faststream.rabbit import ExchangeType, RabbitExchange
 from sqlmodel import Session, select
 
 from app.core.metrics import JOB_TOTAL_DURATION_SECONDS, JOBS_COMPLETED
-from app.models.enums import JobStatus, JobType, KnowledgeBaseStatus, SourceType
+from app.models.enums import (
+    JobStatus,
+    JobType,
+    KnowledgeBaseStatus,
+    SourceType,
+    SyncErrorCode,
+)
 from app.models.tables import (
     DataSource,
     KnowledgeBase,
@@ -170,9 +176,7 @@ class IndexingService:
             # the KB in PROCESSING with no running job: spinner forever,
             # and the next reindex hits the 409 guard
             try:
-                self.kb_repo_reset_to_error(
-                    session, knowledge_base_id, f"Failed to publish job: {str(e)}"
-                )
+                self.kb_repo_reset_to_error(session, knowledge_base_id)
             except Exception as reset_exc:
                 logger.error(
                     f"Failed to reset KB {knowledge_base_id} to error: {reset_exc}"
@@ -181,16 +185,18 @@ class IndexingService:
             raise
 
     @staticmethod
-    def kb_repo_reset_to_error(
-        session: Session, knowledge_base_id: UUID, error_message: str
-    ) -> None:
-        """Reset a KB stuck in PROCESSING after a publish failure to ERROR."""
+    def kb_repo_reset_to_error(session: Session, knowledge_base_id: UUID) -> None:
+        """Reset a KB stuck in PROCESSING after a publish failure to ERROR.
+
+        Technical detail is captured on the job and in the logs by the caller;
+        the KB only carries the user-facing code.
+        """
         kb = session.get(KnowledgeBase, knowledge_base_id)
         if kb is None:
             return
         if kb.status == KnowledgeBaseStatus.PROCESSING:
             kb.status = KnowledgeBaseStatus.ERROR
-            kb.last_sync_error = error_message
+            kb.last_sync_error = SyncErrorCode.FAILED
             session.commit()
 
     @staticmethod

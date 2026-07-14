@@ -352,6 +352,14 @@
         "passwordSet": "Password is set",
         "changePassword": "Change Password",
         "persistSession": "Conversation Memory",
+        "syncErrorTitle": "Last sync failed",
+        "syncError": {
+          "stalled": "The last synchronization didn't finish in time. Please try synchronizing again.",
+          "cancelled": "You cancelled the last synchronization. You can start it again anytime.",
+          "failed": "Something went wrong during the last synchronization. Please try again, and contact support if the problem persists.",
+          "partialFailure": "The synchronization finished, but some files couldn't be processed.",
+          "generic": "The last synchronization failed. Please try again, and contact support if the problem persists."
+        },
         "persistSessionEnabled": "Saved in browser",
         "persistSessionDisabled": "Discarded on reload",
         "persistSessionEnabledDescription": "Visitors keep their conversation across page reloads (stored in their browser's localStorage)",

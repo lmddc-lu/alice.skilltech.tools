@@ -23,6 +23,7 @@ from app.models.enums import (
     JobStatus,
     JobType,
     KnowledgeBaseStatus,
+    SyncErrorCode,
 )
 from app.models.tables import (
     DataSource,
@@ -771,18 +772,14 @@ class JobRepository(BaseRepository[Job]):
             kb = self.session.get(KnowledgeBase, job.knowledge_base_id)
             if kb and kb.status == KnowledgeBaseStatus.PROCESSING:
                 kb.status = KnowledgeBaseStatus.ERROR
-                kb.last_sync_error = (
-                    f"Indexing job {job.id} stalled - you can retry reindexing"
-                )
+                kb.last_sync_error = SyncErrorCode.STALLED
                 logger.info(f"Reset knowledge base {kb.id} status to 'error'")
 
         if job.datasource_id:
             ds = self.session.get(DataSource, job.datasource_id)
             if ds and ds.sync_status == DataSourceSyncStatus.PROCESSING:
                 ds.sync_status = DataSourceSyncStatus.ERROR
-                ds.last_sync_error = (
-                    f"Sync job {job.id} stalled - you can retry syncing"
-                )
+                ds.last_sync_error = SyncErrorCode.STALLED
                 logger.info(f"Reset datasource {ds.id} status to 'error'")
 
         self._log_event(

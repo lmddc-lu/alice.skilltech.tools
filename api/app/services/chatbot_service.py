@@ -63,6 +63,9 @@ class ChatbotService:
         """Build a DetailedChatbotResponse. Files and moodle courses come from their own endpoints."""
         kb = self.kb_repo.get(chatbot.knowledge_base_id)
         kb_status = kb.status if kb else "unknown"
+        # surfaced inline on the edit page so the owner can self-diagnose a
+        # failed sync (e.g. a Moodle token without download permission)
+        last_sync_error = kb.last_sync_error if kb else None
 
         datasource_types = self._parse_datasource_types(chatbot.datasource_types)
         prompt_suggestions = self._parse_prompt_suggestions(chatbot.prompt_suggestions)
@@ -84,6 +87,7 @@ class ChatbotService:
             chatbot_url=f"{settings.FRONTEND_HOST}/chat/{chatbot.id}",
             cite_sources=chatbot.cite_sources,
             force_ocr=chatbot.force_ocr,
+            last_sync_error=last_sync_error,
             persist_session=chatbot.persist_session,
             pii_filter_enabled=chatbot.pii_filter_enabled,
             chatbot_token="",

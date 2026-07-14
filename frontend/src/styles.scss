@@ -3168,7 +3168,41 @@ MOODLE COURSES MODAL
       }
     }
   }
-  
+
+  .sync-error-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: var(--border-radius);
+
+    .sync-error-icon {
+      flex-shrink: 0;
+      margin-top: 0.0625rem;
+    }
+
+    .sync-error-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.125rem;
+      min-width: 0;
+    }
+
+    .sync-error-title {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #991b1b;
+    }
+
+    .sync-error-message {
+      font-size: 0.8125rem;
+      color: #7f1d1d;
+      word-break: break-word;
+    }
+  }
+
   .edit-main {
     display: flex;
     flex-direction: column;

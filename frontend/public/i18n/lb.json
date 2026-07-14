@@ -352,6 +352,14 @@
         "passwordSet": "Passwuert ass festgeluecht",
         "changePassword": "Passwuert änneren",
         "persistSession": "Gespréichserënnerung",
+        "syncErrorTitle": "Läscht Synchroniséierung feelgeschloen",
+        "syncError": {
+          "stalled": "Déi lescht Synchroniséierung ass net rechtzäiteg fäerdeg ginn. Probéiert w.e.g. d'Synchroniséierung nach eng Kéier.",
+          "cancelled": "Dir hutt déi lescht Synchroniséierung ofgebrach. Dir kënnt se zu all Moment nei starten.",
+          "failed": "Bei der leschter Synchroniséierung ass e Feeler geschitt. Probéiert w.e.g. nach eng Kéier a kontaktéiert de Support, wann de Problem weider besteet.",
+          "partialFailure": "D'Synchroniséierung ass fäerdeg, awer e puer Fichiere konnten net veraarbecht ginn.",
+          "generic": "Déi lescht Synchroniséierung ass feelgeschloen. Probéiert w.e.g. nach eng Kéier a kontaktéiert de Support, wann de Problem weider besteet."
+        },
         "persistSessionEnabled": "Am Browser gespäichert",
         "persistSessionDisabled": "Beim Nei lueden ewechgeholl",
         "persistSessionEnabledDescription": "Besucher behalen hiert Gespréich no engem Nei lueden (am localStorage vum Browser gespäichert)",

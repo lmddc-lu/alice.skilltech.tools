@@ -11,6 +11,7 @@ from app.models.enums import (
     JobType,
     KnowledgeBaseStatus,
     SourceType,
+    SyncErrorCode,
 )
 from app.models.tables import (
     DataSource,
@@ -126,7 +127,7 @@ class TestStalledJobDetection:
 
         db.refresh(kb)
         assert kb.status == KnowledgeBaseStatus.ERROR.value
-        assert "stalled" in (kb.last_sync_error or "").lower()
+        assert kb.last_sync_error == SyncErrorCode.STALLED
 
     def test_progressing_job_within_stale_window_is_not_reaped(
         self, db: Session, test_user: User
@@ -200,7 +201,7 @@ class TestStalledJobDetection:
         assert len(stalled) == 1
         db.refresh(ds)
         assert ds.sync_status == DataSourceSyncStatus.ERROR.value
-        assert ds.last_sync_error is not None
+        assert ds.last_sync_error == SyncErrorCode.STALLED
 
     def test_mark_stalled_pending_jobs(self, db: Session, test_user: User) -> None:
         """PENDING jobs never picked up also get marked stalled."""

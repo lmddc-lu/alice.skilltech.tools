@@ -174,6 +174,28 @@ export class EditChatbotComponent implements OnInit {
   recentlyUpdated = signal(false);
   coursesCount = signal(0);
 
+  // Translation key per stable sync-error code stored in last_sync_error.
+  // Unknown or legacy (pre-code) values fall back to the generic key.
+  private readonly syncErrorKeys: Record<string, string> = {
+    stalled: 'editChatbot.syncError.stalled',
+    cancelled: 'editChatbot.syncError.cancelled',
+    failed: 'editChatbot.syncError.failed',
+    partial_failure: 'editChatbot.syncError.partialFailure',
+  };
+
+  // Populated only on a failed sync; surfaced inline so the owner can act on
+  // the cause without needing an admin to open the job detail. Maps the stored
+  // code to a translation key so the message is localized and user-friendly.
+  syncErrorKey = computed(() => {
+    const cb = this.chatbot();
+    if (cb?.status !== ChatbotStatus.ERROR || !cb.last_sync_error) {
+      return null;
+    }
+    return (
+      this.syncErrorKeys[cb.last_sync_error] ?? 'editChatbot.syncError.generic'
+    );
+  });
+
   useCustomAvatar = signal(false);
   avatarPreviewUrl = signal<string | null>(null);
   isUploadingAvatar = signal(false);

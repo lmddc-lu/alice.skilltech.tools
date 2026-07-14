@@ -352,6 +352,14 @@
         "passwordSet": "Le mot de passe est défini",
         "changePassword": "Modifier le mot de passe",
         "persistSession": "Mémoire de conversation",
+        "syncErrorTitle": "Échec de la dernière synchronisation",
+        "syncError": {
+          "stalled": "La dernière synchronisation ne s'est pas terminée à temps. Veuillez relancer la synchronisation.",
+          "cancelled": "Vous avez annulé la dernière synchronisation. Vous pouvez la relancer à tout moment.",
+          "failed": "Une erreur s'est produite lors de la dernière synchronisation. Veuillez réessayer, et contactez le support si le problème persiste.",
+          "partialFailure": "La synchronisation est terminée, mais certains fichiers n'ont pas pu être traités.",
+          "generic": "La dernière synchronisation a échoué. Veuillez réessayer, et contactez le support si le problème persiste."
+        },
         "persistSessionEnabled": "Enregistrée dans le navigateur",
         "persistSessionDisabled": "Effacée au rechargement",
         "persistSessionEnabledDescription": "Les visiteurs conservent leur conversation après un rechargement (stockée dans le localStorage de leur navigateur)",

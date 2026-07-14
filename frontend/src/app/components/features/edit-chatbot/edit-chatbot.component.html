@@ -109,6 +109,15 @@
           }
         </div>
 
+        @if (syncErrorKey(); as syncErrorKey) {
+          <div class="sync-error-banner" role="alert">
+            <div class="sync-error-content">
+              <span class="sync-error-title">{{ "editChatbot.syncErrorTitle" | translate }}</span>
+              <span class="sync-error-message">{{ syncErrorKey | translate }}</span>
+            </div>
+          </div>
+        }
+
         <div class="edit-main">
           <section class="edit-section">
             <div class="section-header">
