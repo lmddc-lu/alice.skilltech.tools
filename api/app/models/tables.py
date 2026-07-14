@@ -206,6 +206,7 @@ class Chatbot(ChatbotBase, table=True):
     token: str = Field(default_factory=lambda: str(uuid.uuid4()).replace("-", ""))
     api_enabled: bool = Field(default=False)
     chat_request_count: int = Field(default=0)
+    last_chat_request_at: datetime | None = Field(default=None)
 
     knowledge_base: KnowledgeBase = Relationship(back_populates="chatbots")
     chat_sessions: list["ChatSession"] = Relationship(back_populates="chatbot")

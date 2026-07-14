@@ -84,6 +84,9 @@ class ChatbotRepository(BaseRepository[Chatbot]):
         self.session.exec(
             update(Chatbot)
             .where(col(Chatbot.id) == chatbot_id)
-            .values(chat_request_count=Chatbot.chat_request_count + 1)
+            .values(
+                chat_request_count=Chatbot.chat_request_count + 1,
+                last_chat_request_at=datetime.now(UTC),
+            )
         )
         self.session.commit()
