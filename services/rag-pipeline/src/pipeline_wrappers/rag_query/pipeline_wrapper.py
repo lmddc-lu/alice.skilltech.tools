@@ -3,6 +3,13 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from config import (
+    CONTEXTUALIZE_HISTORY_TURNS,
+    CONTEXTUALIZE_QUERY_ENABLED,
+    CONTEXTUALIZE_TEMPLATE,
+    GENERATION_MODEL_ID,
+    LLM_API_BASE,
+    LLM_API_KEY,
+    LLM_TOP_P,
     QDRANT_INDEX,
     REDIS_URL,
     SESSION_STORAGE_ENABLED,
@@ -16,7 +23,9 @@ from hayhooks import (
     async_streaming_generator,
     get_last_user_message,
 )
+from haystack.components.generators.chat import OpenAIChatGenerator
 from haystack.dataclasses import ChatMessage
+from haystack.utils import Secret
 from index_config import resolve_embedding_config, resolve_sparse_for_index
 from loguru import logger
 from RedisSessionManager import RedisSessionManager
@@ -29,6 +38,22 @@ class RAGPipelineWrapper(BasePipelineWrapper):
 
     def setup(self) -> None:
         self._default_index = QDRANT_INDEX
+
+        # Dedicated generator for query rewriting. Temperature 0 and thinking
+        # off keep the rewrite deterministic and fast; it must emit only the
+        # query text so it can be embedded directly.
+        self.query_rewriter = OpenAIChatGenerator(
+            api_key=Secret.from_token(LLM_API_KEY),
+            model=GENERATION_MODEL_ID,
+            api_base_url=LLM_API_BASE,
+            generation_kwargs={
+                "temperature": 0.0,
+                "top_p": LLM_TOP_P,
+                "extra_body": {
+                    "chat_template_kwargs": {"enable_thinking": False},
+                },
+            },
+        )
 
         self.session_manager = None
         if SESSION_STORAGE_ENABLED:
@@ -93,6 +118,35 @@ class RAGPipelineWrapper(BasePipelineWrapper):
 
         return messages
 
+    async def _contextualize_query(
+        self, question: str, conversation_history: list[dict[str, str]]
+    ) -> str:
+        """Rewrite a follow-up question into a standalone retrieval query.
+
+        Resolves pronouns and ellipsis against the recent conversation so the
+        embedded search query carries the topic the user is referring to.
+        Returns the question unchanged when there is no history to resolve
+        against or the model returns an empty rewrite.
+        """
+        if not conversation_history:
+            return question
+
+        recent = conversation_history[-CONTEXTUALIZE_HISTORY_TURNS:]
+        history_text = "\n".join(f"{msg['role']}: {msg['content']}" for msg in recent)
+        prompt = CONTEXTUALIZE_TEMPLATE.format(history=history_text, question=question)
+
+        result = await self.query_rewriter.run_async(
+            messages=[ChatMessage.from_user(prompt)]
+        )
+        replies = result.get("replies", [])
+        rewritten = replies[0].text.strip() if replies else ""
+
+        if not rewritten:
+            logger.warning("Query contextualization returned empty; using raw question")
+            return question
+
+        return rewritten
+
     def _prepare_pipeline_inputs(
         self,
         question: str,
@@ -102,7 +156,13 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         rag_template: str | None = None,
         cite_sources: bool = True,
         use_sparse: bool = False,
+        retrieval_query: str | None = None,
     ) -> dict[str, Any]:
+        # The prompt sees the user's real question; the embedder sees the
+        # (possibly rewritten) retrieval query. They diverge only when
+        # contextualization is on.
+        search_text = retrieval_query if retrieval_query is not None else question
+
         pipeline_inputs = {
             "prompt_builder": {
                 "query": question,
@@ -118,10 +178,10 @@ class RAGPipelineWrapper(BasePipelineWrapper):
             pipeline_inputs["prompt_builder"]["rag_template"] = rag_template
 
         if use_sparse:
-            pipeline_inputs["sparse_embedder"] = {"text": question}
-            pipeline_inputs["dense_embedder"] = {"text": question}
+            pipeline_inputs["sparse_embedder"] = {"text": search_text}
+            pipeline_inputs["dense_embedder"] = {"text": search_text}
         else:
-            pipeline_inputs["embedder"] = {"text": question}
+            pipeline_inputs["embedder"] = {"text": search_text}
 
         return pipeline_inputs
 
@@ -137,6 +197,9 @@ class RAGPipelineWrapper(BasePipelineWrapper):
             rag_template = body.get("rag_template")
             cite_sources = body.get("cite_sources", True)
             embedding_config = body.get("embedding_config")
+            contextualize_query = body.get(
+                "contextualize_query", CONTEXTUALIZE_QUERY_ENABLED
+            )
 
             if not custom_chat_id:
                 timestamp = int(time.time() * 1000)
@@ -153,6 +216,12 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                             {"role": msg.get("role"), "content": msg.get("content", "")}
                         )
 
+            retrieval_query = question
+            if contextualize_query:
+                retrieval_query = await self._contextualize_query(
+                    question, conversation_history
+                )
+
             pipeline, use_sparse = self._get_pipeline(index_name, embedding_config)
 
             retriever = pipeline.get_component("retriever")
@@ -168,6 +237,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                 rag_template,
                 cite_sources,
                 use_sparse=use_sparse,
+                retrieval_query=retrieval_query,
             )
 
             return async_streaming_generator(
@@ -196,12 +266,21 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         rag_template: str | None = None,
         cite_sources: bool = True,
         embedding_config: dict | str | None = None,
+        contextualize_query: bool | None = None,
     ) -> dict[str, Any]:
         """Answer a question with document context."""
         if top_k is None:
             top_k = TOP_K
+        if contextualize_query is None:
+            contextualize_query = CONTEXTUALIZE_QUERY_ENABLED
 
         try:
+            retrieval_query = question
+            if contextualize_query:
+                retrieval_query = await self._contextualize_query(
+                    question, conversation_history or []
+                )
+
             pipeline, use_sparse = self._get_pipeline(index_name, embedding_config)
 
             retriever = pipeline.get_component("retriever")
@@ -216,6 +295,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                 rag_template=rag_template,
                 cite_sources=cite_sources,
                 use_sparse=use_sparse,
+                retrieval_query=retrieval_query,
             )
 
             result = await pipeline.run_async(
