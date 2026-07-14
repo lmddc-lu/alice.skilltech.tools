@@ -302,6 +302,21 @@ export class ChatbotService {
     );
   }
 
+  uploadHeaderLogo(chatbotId: string, file: File): Observable<ChatbotItem> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<ChatbotItem>(
+      `${this.baseUrl}/${chatbotId}/header-logo`,
+      formData
+    );
+  }
+
+  deleteHeaderLogo(chatbotId: string): Observable<ChatbotItem> {
+    return this.http.delete<ChatbotItem>(
+      `${this.baseUrl}/${chatbotId}/header-logo`
+    );
+  }
+
   updateFiles(
     chatbotId: string,
     filesToAdd: File[],

@@ -48,6 +48,8 @@ import {
         [avatarUrl]="chatbotData()!.avatar_url"
         [persistSession]="chatbotData()!.persist_session"
         [citationTarget]="citationTarget()"
+        [accentColor]="chatbotData()!.accent_color"
+        [headerLogoUrl]="chatbotData()!.header_logo_url"
       />
       }
     </div>

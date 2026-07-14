@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.core.storage import build_chatbot_avatar_url
+from app.core.storage import build_chatbot_avatar_url, build_chatbot_header_logo_url
 from app.models.enums import ChatbotPersonaType, SourceType
 from app.models.schemas import (
     ChatbotMoodleCourseInfo,
@@ -71,6 +71,9 @@ class ChatbotService:
         prompt_suggestions = self._parse_prompt_suggestions(chatbot.prompt_suggestions)
 
         avatar_url = build_chatbot_avatar_url(chatbot.id, chatbot.avatar_storage_path)
+        header_logo_url = build_chatbot_header_logo_url(
+            chatbot.id, chatbot.header_logo_storage_path
+        )
 
         return DetailedChatbotResponse(
             id=chatbot.id,
@@ -84,10 +87,10 @@ class ChatbotService:
             api_enabled=chatbot.api_enabled,
             token=chatbot.token,
             status=kb_status,
+            last_sync_error=last_sync_error,
             chatbot_url=f"{settings.FRONTEND_HOST}/chat/{chatbot.id}",
             cite_sources=chatbot.cite_sources,
             force_ocr=chatbot.force_ocr,
-            last_sync_error=last_sync_error,
             persist_session=chatbot.persist_session,
             pii_filter_enabled=chatbot.pii_filter_enabled,
             chatbot_token="",
@@ -95,6 +98,9 @@ class ChatbotService:
             datasource_types=datasource_types,
             avatar_storage_path=chatbot.avatar_storage_path,
             avatar_url=avatar_url,
+            accent_color=chatbot.accent_color,
+            header_logo_storage_path=chatbot.header_logo_storage_path,
+            header_logo_url=header_logo_url,
             reindex_schedule_enabled=chatbot.reindex_schedule_enabled,
             reindex_schedule_frequency=chatbot.reindex_schedule_frequency,
             reindex_schedule_day_of_week=chatbot.reindex_schedule_day_of_week,

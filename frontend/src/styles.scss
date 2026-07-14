@@ -3207,7 +3207,7 @@ MOODLE COURSES MODAL
     display: flex;
     flex-direction: column;
     gap: 2rem;
-    
+
     .edit-section {
       background-color: var(--white);
       border-radius: var(--border-radius-lg);
@@ -3221,10 +3221,6 @@ MOODLE COURSES MODAL
             /*  margin-left: 2rem; */
             width: 16px;
             height: 16px;
-          }
-          span{
-            color: var(--gray-600);
-            font-weight: 700;
           }
         }
       }
@@ -3556,6 +3552,60 @@ MOODLE COURSES MODAL
               }
             }
             .avatar-actions {
+              display: flex;
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 0.35rem;
+            }
+          }
+
+          &.branding-field {
+            .branding-colors {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 1.5rem;
+              margin-top: 0.75rem;
+            }
+            .branding-color {
+              display: flex;
+              flex-direction: column;
+              gap: 0.35rem;
+
+              input[type="color"] {
+                width: 48px;
+                height: 32px;
+                padding: 0;
+                border: 1px solid var(--gray-300);
+                border-radius: 6px;
+                background: none;
+                cursor: pointer;
+              }
+            }
+            .branding-logo {
+              display: flex;
+              flex-direction: column;
+              gap: 0.35rem;
+              margin-top: 1rem;
+            }
+            .branding-logo-row {
+              display: flex;
+              align-items: center;
+              gap: 1rem;
+            }
+            .branding-logo-preview {
+              flex-shrink: 0;
+              height: 40px;
+              max-width: 160px;
+              display: flex;
+              align-items: center;
+
+              img {
+                max-height: 40px;
+                max-width: 160px;
+                object-fit: contain;
+              }
+            }
+            .branding-logo-actions {
               display: flex;
               flex-direction: column;
               align-items: flex-start;
@@ -6988,7 +7038,7 @@ CHAT PAGE
   background-color: #232323;
   border-bottom: 1px solid var(--gray-200);
   box-shadow: var(--shadow-sm);
-  
+
   .chat-header-info {
     flex: 1;
   }
@@ -7106,8 +7156,16 @@ CHAT PAGE
       max-height: 35vh;
       height: auto;
       object-fit: contain;
+
+      // Custom uploads are square icons, not the wide default logo:
+      // render at a smaller footprint without any round border.
+      &.has-custom-avatar {
+        width: 120px;
+        max-width: min(40vw, 120px);
+        border-radius: 0;
+      }
     }
-    
+
     h3 {
       color: var(--gray-700);
       margin: 0;
@@ -7468,17 +7526,18 @@ CHAT PAGE
           // cover-cropped circle, mirroring the user-avatar treatment,
           // instead of the persona oversize-offset trick above.
           &.has-custom-avatar {
-            background: rgba(255, 255, 255, 0.5);
-            border: 1px solid var(--gray-200);
+            background: transparent;
+            border: none;
+            border-radius: 0;
             overflow: hidden;
-            
+
             img {
               position: static;
               width: 100%;
               height: 100%;
               top: auto;
               left: auto;
-              object-fit: cover;
+              object-fit: contain;
               object-position: center;
             }
           }

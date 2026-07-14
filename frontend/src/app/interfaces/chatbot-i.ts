@@ -158,6 +158,9 @@ export interface ChatbotItem {
   pii_filter_enabled: boolean;
   avatar_storage_path: string | null;
   avatar_url: string | null;
+  accent_color: string | null;
+  header_logo_storage_path: string | null;
+  header_logo_url: string | null;
   reindex_schedule_enabled: boolean;
   reindex_schedule_frequency: ReindexFrequency | null;
   reindex_schedule_day_of_week: number | null;
@@ -233,4 +236,6 @@ export interface ChatbotPublicInfo {
   prompt_suggestions: string[] | null;
   avatar_url: string | null;
   persist_session: boolean;
+  accent_color: string | null;
+  header_logo_url: string | null;
 }

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 import app.api_v2.routes.chatbots.avatar  # noqa: F401
+import app.api_v2.routes.chatbots.branding  # noqa: F401
 import app.api_v2.routes.chatbots.chat  # noqa: F401
 import app.api_v2.routes.chatbots.creation  # noqa: F401
 import app.api_v2.routes.chatbots.files  # noqa: F401

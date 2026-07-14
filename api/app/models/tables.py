@@ -180,6 +180,11 @@ class ChatbotBase(SQLModel):
     pii_filter_enabled: bool = Field(default=False)
     avatar_storage_path: str | None = Field(default=None, max_length=1024)
 
+    # Chat-interface branding, editable by instance admins only.
+    # Accent colour is ``#rrggbb`` hex; NULL means "use the built-in default".
+    accent_color: str | None = Field(default=None, max_length=7)
+    header_logo_storage_path: str | None = Field(default=None, max_length=1024)
+
     # scheduled reindex. frequency is a ReindexFrequency value.
     # weekly uses day_of_week (0=Mon..6=Sun, APScheduler convention).
     # monthly uses day_of_month (1..28, capped to avoid short months).

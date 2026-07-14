@@ -62,10 +62,19 @@ interface ChatMessage {
   selector: 'app-chat-interface',
   imports: [CommonModule, FormsModule, TranslatePipe, MarkdownComponent, LanguageSelectorComponent, MlangPipe],
   template: `
-    <div class="chat-interface" [class.compact]="compact()">
+    <div
+      class="chat-interface"
+      [class.compact]="compact()"
+      [style.--primary-color]="accentColor() || null"
+    >
       @if (!compact()) {
       <div class="chat-header">
-        <img src="/icons/alice_logo.svg" alt="Alice" class="chat-header-logo" height="32" />
+        <img
+          [src]="effectiveHeaderLogoUrl()"
+          alt="Alice"
+          class="chat-header-logo"
+          height="32"
+        />
         <div class="chat-header-info">
           <h1 class="chat-title">{{ chatbotName() }}</h1>
         </div>
@@ -86,9 +95,11 @@ interface ChatMessage {
       <div class="chat-messages" #messagesContainer>
         @if (messages().length === 0) {
         <div class="chat-empty-state">
-          @if (!hasCustomAvatar()) {
-          <img [src]="effectiveAvatarUrl()" alt="Chat" />
-          }
+          <img
+            [src]="effectiveAvatarUrl()"
+            alt="Chat"
+            [class.has-custom-avatar]="hasCustomAvatar()"
+          />
           <h3>{{ 'chat.startConversation' | translate }}</h3>
           <p>{{ 'chat.askAnything' | translate }}</p>
           @if (promptSuggestions().length) {
@@ -375,6 +386,9 @@ export class ChatInterfaceComponent {
 
   private personaAvatarUrl = computed(() => {
     switch (this.personaType()) {
+  // Instance-admin branding. Null values fall back to the default look.
+  accentColor = input<string | null>(null);
+  headerLogoUrl = input<string | null>(null);
       case 'teacher':
         return '/icons/avatar1.png';
       case 'studycompanion':
@@ -401,6 +415,11 @@ export class ChatInterfaceComponent {
   // delta). Separates the pre-stream phase (request sent, server retrieving)
   // from the thinking phase (model generating, empty deltas streaming).
   streamStarted = signal<boolean>(false);
+  // Falls back to the default product logo when no custom header logo is set.
+  effectiveHeaderLogoUrl = computed(
+    () => this.headerLogoUrl() ?? '/icons/alice_logo.svg',
+  );
+
   isInputFocused = signal<boolean>(false);
   // True once the PII filter has actually stripped personal data from a message
   // in this conversation; drives the "don't share personal info" warning.

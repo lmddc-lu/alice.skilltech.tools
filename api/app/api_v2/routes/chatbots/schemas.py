@@ -1,10 +1,13 @@
 """Request/response models used only by the chatbots endpoints."""
 
+import re
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import ChatbotPersonaType, ReindexFrequency
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 class TextEntryContentResponse(BaseModel):
@@ -27,6 +30,15 @@ class ChatbotUpdate(BaseModel):
     force_ocr: bool | None = None
     persist_session: bool | None = None
     pii_filter_enabled: bool | None = None
+    # Chat-interface branding. Admin-only; enforced in the update endpoint.
+    accent_color: str | None = None
+
+    @field_validator("accent_color")
+    @classmethod
+    def _validate_hex_color(cls, value: str | None) -> str | None:
+        if value is not None and not _HEX_COLOR_RE.match(value):
+            raise ValueError("Color must be a #rrggbb hex string")
+        return value
 
 
 class ChatbotAccessRequest(BaseModel):

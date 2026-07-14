@@ -18,7 +18,7 @@ from app.api_v2.deps import (
     SessionDep,
     UserDep,
 )
-from app.core.storage import build_chatbot_avatar_url
+from app.core.storage import build_chatbot_avatar_url, build_chatbot_header_logo_url
 from app.models.enums import ChatbotPersonaType, KnowledgeBaseStatus
 from app.models.schemas import (
     ChatbotResponse,
@@ -138,6 +138,9 @@ def get_chatbot_public(
             pass
 
     avatar_url = build_chatbot_avatar_url(chatbot.id, chatbot.avatar_storage_path)
+    header_logo_url = build_chatbot_header_logo_url(
+        chatbot.id, chatbot.header_logo_storage_path
+    )
 
     return PublicChatbotResponse(
         id=chatbot.id,
@@ -150,4 +153,6 @@ def get_chatbot_public(
         prompt_suggestions=prompt_suggestions,
         avatar_url=avatar_url,
         persist_session=chatbot.persist_session,
+        accent_color=chatbot.accent_color,
+        header_logo_url=header_logo_url,
     )

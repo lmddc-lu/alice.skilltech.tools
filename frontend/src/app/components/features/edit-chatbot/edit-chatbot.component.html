@@ -362,6 +362,88 @@
                 </div>
               </div>
 
+              @if (isAdmin()) {
+              <div class="edit-field branding-field">
+                <label class="field-label">{{
+                  "editChatbot.brandingSection" | translate
+                }}</label>
+                <div class="field-edit">
+                  <span class="field-hint">
+                    {{ "editChatbot.brandingHint" | translate }}
+                  </span>
+
+                  <div class="branding-colors">
+                    <label class="branding-color">
+                      <span class="field-label">{{
+                        "editChatbot.accentColor" | translate
+                      }}</span>
+                      <input
+                        type="color"
+                        [value]="accentColorValue()"
+                        (change)="onAccentColorChange($any($event.target).value)"
+                      />
+                    </label>
+                  </div>
+
+                  <div class="branding-logo">
+                    <span class="field-label">{{
+                      "editChatbot.headerLogo" | translate
+                    }}</span>
+                    <div class="branding-logo-row">
+                      @if (customHeaderLogoUrl()) {
+                        <div class="branding-logo-preview">
+                          <img [src]="customHeaderLogoUrl()" alt="Header logo" />
+                        </div>
+                      }
+                      <div class="branding-logo-actions">
+                        <input
+                          #headerLogoInput
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                          hidden
+                          (change)="onHeaderLogoFileSelected($event)"
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          (click)="headerLogoInput.click()"
+                          [disabled]="isUploadingHeaderLogo()"
+                        >
+                          @if (isUploadingHeaderLogo()) {
+                            <div class="loading-spinner small"></div>
+                            {{ "editChatbot.headerLogoUploading" | translate }}
+                          } @else if (chatbot()?.header_logo_storage_path) {
+                            {{ "editChatbot.headerLogoChange" | translate }}
+                          } @else {
+                            {{ "editChatbot.headerLogoChoose" | translate }}
+                          }
+                        </button>
+                        @if (chatbot()?.header_logo_storage_path) {
+                          <button
+                            type="button"
+                            class="btn btn-ghost btn-sm"
+                            (click)="removeHeaderLogo()"
+                            [disabled]="isUploadingHeaderLogo()"
+                          >
+                            {{ "editChatbot.headerLogoRemove" | translate }}
+                          </button>
+                        }
+                        <span class="field-hint">
+                          {{ "editChatbot.headerLogoHint" | translate }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  @if (brandingError()) {
+                    <div class="field-error">
+                      {{ brandingError()! | translate }}
+                    </div>
+                  }
+                </div>
+              </div>
+              }
+
               <div class="edit-field suggestions-field">
                 <div class="suggestions-header">
                   <label class="field-label">
@@ -733,6 +815,8 @@
           [personaType]="chatbot()!.personaType"
           [promptSuggestions]="chatbot()!.prompt_suggestions || []"
           [avatarUrl]="chatbot()!.avatar_url"
+          [accentColor]="chatbot()!.accent_color"
+          [headerLogoUrl]="chatbot()!.header_logo_url"
           [showDebugChunks]="true"
         />
       </div>

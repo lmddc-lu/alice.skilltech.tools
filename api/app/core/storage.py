@@ -48,6 +48,20 @@ def build_chatbot_avatar_url(
     return f"/api/v2/chatbots/{chatbot_id}/avatar?v={cache_key}"
 
 
+def build_chatbot_header_logo_url(
+    chatbot_id: object, header_logo_storage_path: str | None
+) -> str | None:
+    """Build the browser-facing URL for a chatbot's header logo.
+
+    Returns None when no custom header logo is set.
+    Filename is appended as a cache-busting query param.
+    """
+    if not header_logo_storage_path:
+        return None
+    cache_key = header_logo_storage_path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return f"/api/v2/chatbots/{chatbot_id}/header-logo?v={cache_key}"
+
+
 class StorageManager:
     """S3/MinIO storage operations with user-based paths."""
 

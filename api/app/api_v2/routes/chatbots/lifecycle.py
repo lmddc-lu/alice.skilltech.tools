@@ -19,6 +19,7 @@ from app.models.enums import KnowledgeBaseStatus
 from app.models.schemas import DetailedChatbotResponse
 from app.repositories.chatbot import ChatbotRepository
 from app.repositories.knowledge_base import KnowledgeBaseRepository
+from app.repositories.user import UserRepository
 from app.services.access_service import AccessService
 from app.services.scheduler_service import scheduler_service
 
@@ -78,6 +79,16 @@ def update_chatbot(
     update_data = chatbot_data.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided for update")
+
+    # Branding is reserved for instance admins; non-admin owners keep defaults.
+    branding_fields = {"accent_color"}
+    if branding_fields & update_data.keys():
+        user_repo = UserRepository(chatbot_service.session)
+        if not user_repo.is_admin(user):
+            raise HTTPException(
+                status_code=403,
+                detail="Branding can only be changed by an instance admin",
+            )
 
     if "password" in update_data and update_data["password"]:
         update_data["password_hash"] = AccessService.hash_password(

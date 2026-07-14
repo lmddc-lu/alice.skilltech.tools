@@ -13,6 +13,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ChatbotItem, ChatbotFile, ChatbotPersonaType, ChatbotStatus, JobFile, JobPhase, JobProgress, MoodleCourseInfo } from '../../../interfaces/chatbot-i';
 import { ChatbotService } from '../../../services/chatbot/chatbot.service';
+import { AuthService } from '../../../services/core/auth.service';
 import { MoodleCoursesService } from '../../../services/courses/moodle-courses.service';
 import { ChatInterfaceComponent } from '../../shared/chat-interface/chat-interface.component';
 import { MoodleCoursesModalComponent } from '../../shared/components/moodle-courses-modal/moodle-courses-modal.component';
@@ -31,6 +32,15 @@ interface PersonaCard {
 
 const AVATAR_ACCEPTED_MIME = ['image/png', 'image/jpeg', 'image/webp'];
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+
+const HEADER_LOGO_ACCEPTED_MIME = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/svg+xml',
+];
+const HEADER_LOGO_MAX_BYTES = 5 * 1024 * 1024;
+const DEFAULT_ACCENT_COLOR = '#ffbc15';
 
 @Component({
   selector: 'app-edit-chatbot',
@@ -54,8 +64,12 @@ export class EditChatbotComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private chatbotService = inject(ChatbotService);
+  private authService = inject(AuthService);
   private moodleService = inject(MoodleCoursesService);
   private translate = inject(TranslateService);
+
+  // Branding controls are reserved for instance admins.
+  readonly isAdmin = this.authService.isAdmin;
 
   private static readonly POLL_INTERVAL_MS = 3000;
 
@@ -160,20 +174,6 @@ export class EditChatbotComponent implements OnInit {
   );
   hasFailedFiles = computed(() => this.failedFiles().length > 0);
 
-  toggleFilesExpanded(): void {
-    this.filesExpanded.update((v) => !v);
-  }
-
-  showFileManager = signal(false);
-  files = signal<ChatbotFile[]>([]);
-  linkedCourses = signal<MoodleCourseInfo[]>([]);
-
-  showMoodleContentBrowser = signal(false);
-  showFileContentBrowser = signal(false);
-  isModalOpen = signal(false);
-  recentlyUpdated = signal(false);
-  coursesCount = signal(0);
-
   // Translation key per stable sync-error code stored in last_sync_error.
   // Unknown or legacy (pre-code) values fall back to the generic key.
   private readonly syncErrorKeys: Record<string, string> = {
@@ -196,6 +196,20 @@ export class EditChatbotComponent implements OnInit {
     );
   });
 
+  toggleFilesExpanded(): void {
+    this.filesExpanded.update((v) => !v);
+  }
+
+  showFileManager = signal(false);
+  files = signal<ChatbotFile[]>([]);
+  linkedCourses = signal<MoodleCourseInfo[]>([]);
+
+  showMoodleContentBrowser = signal(false);
+  showFileContentBrowser = signal(false);
+  isModalOpen = signal(false);
+  recentlyUpdated = signal(false);
+  coursesCount = signal(0);
+
   useCustomAvatar = signal(false);
   avatarPreviewUrl = signal<string | null>(null);
   isUploadingAvatar = signal(false);
@@ -208,6 +222,17 @@ export class EditChatbotComponent implements OnInit {
 
   customAvatarUrl = computed(
     () => this.avatarPreviewUrl() ?? this.chatbot()?.avatar_url ?? null
+  );
+
+  // Branding editing state (admin only). The accent colour defaults to the
+  // built-in look so the picker always shows a concrete value.
+  accentColorValue = signal(DEFAULT_ACCENT_COLOR);
+  headerLogoPreviewUrl = signal<string | null>(null);
+  isUploadingHeaderLogo = signal(false);
+  brandingError = signal<string | null>(null);
+
+  customHeaderLogoUrl = computed(
+    () => this.headerLogoPreviewUrl() ?? this.chatbot()?.header_logo_url ?? null
   );
 
   personaCards = signal<PersonaCard[]>([
@@ -379,6 +404,10 @@ export class EditChatbotComponent implements OnInit {
     this.useCustomAvatar.set(!!chatbot.avatar_storage_path);
     this.avatarPreviewUrl.set(null);
     this.avatarError.set(null);
+
+    this.accentColorValue.set(chatbot.accent_color ?? DEFAULT_ACCENT_COLOR);
+    this.headerLogoPreviewUrl.set(null);
+    this.brandingError.set(null);
   }
 
   startEditingName(): void {
@@ -621,6 +650,89 @@ export class EditChatbotComponent implements OnInit {
         this.avatarPreviewUrl.set(null);
         this.avatarError.set('editChatbot.avatarUploadFailed');
         this.isUploadingAvatar.set(false);
+      },
+    });
+  }
+
+  onAccentColorChange(color: string): void {
+    this.accentColorValue.set(color);
+    this.saveBrandingColors();
+  }
+
+  private saveBrandingColors(): void {
+    const chatbot = this.chatbot();
+    if (!chatbot) return;
+
+    this.brandingError.set(null);
+    this.chatbotService
+      .updateChatbot(chatbot.id, {
+        accent_color: this.accentColorValue(),
+      })
+      .subscribe({
+        next: (updated) => this.chatbot.set(updated),
+        error: (err) => {
+          console.error('Error saving branding colors:', err);
+          this.brandingError.set('editChatbot.brandingSaveFailed');
+        },
+      });
+  }
+
+  onHeaderLogoFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    this.brandingError.set(null);
+
+    if (!HEADER_LOGO_ACCEPTED_MIME.includes(file.type)) {
+      this.brandingError.set('editChatbot.headerLogoInvalidType');
+      return;
+    }
+    if (file.size > HEADER_LOGO_MAX_BYTES) {
+      this.brandingError.set('editChatbot.headerLogoTooLarge');
+      return;
+    }
+
+    const chatbot = this.chatbot();
+    if (!chatbot) return;
+
+    const reader = new FileReader();
+    reader.onload = () => this.headerLogoPreviewUrl.set(reader.result as string);
+    reader.readAsDataURL(file);
+
+    this.isUploadingHeaderLogo.set(true);
+    this.chatbotService.uploadHeaderLogo(chatbot.id, file).subscribe({
+      next: (updated) => {
+        this.chatbot.set(updated);
+        this.headerLogoPreviewUrl.set(null);
+        this.isUploadingHeaderLogo.set(false);
+      },
+      error: (err) => {
+        console.error('Error uploading header logo:', err);
+        this.headerLogoPreviewUrl.set(null);
+        this.brandingError.set('editChatbot.headerLogoUploadFailed');
+        this.isUploadingHeaderLogo.set(false);
+      },
+    });
+  }
+
+  removeHeaderLogo(): void {
+    const chatbot = this.chatbot();
+    if (!chatbot?.header_logo_storage_path) {
+      this.headerLogoPreviewUrl.set(null);
+      return;
+    }
+
+    this.brandingError.set(null);
+    this.chatbotService.deleteHeaderLogo(chatbot.id).subscribe({
+      next: (updated) => {
+        this.chatbot.set(updated);
+        this.headerLogoPreviewUrl.set(null);
+      },
+      error: (err) => {
+        console.error('Error removing header logo:', err);
+        this.brandingError.set('editChatbot.headerLogoRemoveFailed');
       },
     });
   }

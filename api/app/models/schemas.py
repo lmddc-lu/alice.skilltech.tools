@@ -152,6 +152,8 @@ class PublicChatbotResponse(BaseModel):
     prompt_suggestions: list[str] | None = None
     avatar_url: str | None = None
     persist_session: bool = False
+    accent_color: str | None = None
+    header_logo_url: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -196,6 +198,10 @@ class DetailedChatbotResponse(BaseModel):
 
     avatar_storage_path: str | None = None
     avatar_url: str | None = None
+
+    accent_color: str | None = None
+    header_logo_storage_path: str | None = None
+    header_logo_url: str | None = None
 
     reindex_schedule_enabled: bool = False
     reindex_schedule_frequency: str | None = None

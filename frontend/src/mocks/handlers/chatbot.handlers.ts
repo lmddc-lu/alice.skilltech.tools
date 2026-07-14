@@ -86,6 +86,9 @@ function newChatbot(
     pii_filter_enabled: false,
     avatar_storage_path: null,
     avatar_url: null,
+    accent_color: null,
+    header_logo_storage_path: null,
+    header_logo_url: null,
     reindex_schedule_enabled: false,
     reindex_schedule_frequency: null,
     reindex_schedule_day_of_week: null,
@@ -225,6 +228,10 @@ export const chatbotHandlers = [
       access_level: chatbot.access_level,
       personaType: chatbot.personaType,
       prompt_suggestions: chatbot.prompt_suggestions,
+      avatar_url: chatbot.avatar_url,
+      persist_session: chatbot.persist_session,
+      accent_color: chatbot.accent_color,
+      header_logo_url: chatbot.header_logo_url,
     });
   }),
 
@@ -433,6 +440,35 @@ export const chatbotHandlers = [
     const updated = mockStore.updateChatbot(id, {
       avatar_storage_path: null,
       avatar_url: null,
+    });
+    return HttpResponse.json(updated);
+  }),
+
+  http.post(`${base}/:id/header-logo`, async ({ params, request }) => {
+    const id = params['id'] as string;
+    if (!mockStore.getChatbot(id)) return new HttpResponse(null, { status: 404 });
+    const formData = await request.formData();
+    const file = formData.get('file');
+    if (!(file instanceof File)) {
+      return new HttpResponse(JSON.stringify({ detail: 'Missing file' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const logoUrl = URL.createObjectURL(file);
+    const updated = mockStore.updateChatbot(id, {
+      header_logo_storage_path: `mock/header-logos/${id}/${file.name}`,
+      header_logo_url: logoUrl,
+    });
+    return HttpResponse.json(updated);
+  }),
+
+  http.delete(`${base}/:id/header-logo`, ({ params }) => {
+    const id = params['id'] as string;
+    if (!mockStore.getChatbot(id)) return new HttpResponse(null, { status: 404 });
+    const updated = mockStore.updateChatbot(id, {
+      header_logo_storage_path: null,
+      header_logo_url: null,
     });
     return HttpResponse.json(updated);
   }),
