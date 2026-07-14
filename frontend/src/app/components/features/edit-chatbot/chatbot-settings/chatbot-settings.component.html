@@ -395,7 +395,7 @@
           <input
             type="checkbox"
             [checked]="scheduleEnabled()"
-            (change)="scheduleEnabled.set(!scheduleEnabled())"
+            (change)="toggleScheduleEnabled()"
             [attr.aria-label]="'Toggle reindex schedule'"
           />
           <span class="toggle-slider"></span>
@@ -409,7 +409,7 @@
           <select
             class="form-input"
             [ngModel]="scheduleFrequency()"
-            (ngModelChange)="scheduleFrequency.set($event)"
+            (ngModelChange)="onScheduleFrequencyChange($event)"
           >
             <option [ngValue]="'weekly'">
               {{ "editChatbot.frequencyWeekly" | translate }}
@@ -426,7 +426,7 @@
           <select
             class="form-input"
             [ngModel]="scheduleDayOfWeek()"
-            (ngModelChange)="scheduleDayOfWeek.set($event)"
+            (ngModelChange)="onScheduleDayOfWeekChange($event)"
           >
             @for (d of daysOfWeek; track d.value) {
             <option [ngValue]="d.value">{{ d.labelKey | translate }}</option>
@@ -439,7 +439,7 @@
           <select
             class="form-input"
             [ngModel]="scheduleDayOfMonth()"
-            (ngModelChange)="scheduleDayOfMonth.set($event)"
+            (ngModelChange)="onScheduleDayOfMonthChange($event)"
           >
             @for (d of daysOfMonth; track d) {
             <option [ngValue]="d">{{ d }}</option>
@@ -454,7 +454,7 @@
             <select
               class="form-input"
               [ngModel]="scheduleHour()"
-              (ngModelChange)="scheduleHour.set($event)"
+              (ngModelChange)="onScheduleHourChange($event)"
             >
               @for (h of hours; track h) {
               <option [ngValue]="h">{{ h.toString().padStart(2, '0') }}</option>
@@ -481,20 +481,6 @@
         {{ scheduleError()! | translate }}
       </p>
       }
-
-      <div class="edit-actions">
-        <button
-          class="btn btn-primary btn-md"
-          (click)="saveSchedule()"
-          [disabled]="isSavingSchedule()"
-        >
-          {{
-            isSavingSchedule()
-              ? ("editChatbot.saving" | translate)
-              : ("editChatbot.save" | translate)
-          }}
-        </button>
-      </div>
     </div>
     }
   </div>

@@ -300,7 +300,6 @@ export class ChatbotSettingsComponent {
   scheduleDayOfMonth = signal(1);
   scheduleHour = signal(6);
   scheduleMinute = signal(0);
-  isSavingSchedule = signal(false);
   scheduleError = signal<string | null>(null);
 
   // Quarter-hour preset for the minute <select>.
@@ -344,14 +343,38 @@ export class ChatbotSettingsComponent {
     });
   }
 
-  onScheduleMinutePresetChange(value: number): void {
-    this.scheduleMinute.set(value);
+  toggleScheduleEnabled(): void {
+    this.scheduleEnabled.set(!this.scheduleEnabled());
+    this.persistSchedule();
   }
 
-  saveSchedule(): void {
-    const chatbot = this.chatbot();
-    if (this.isSavingSchedule()) return;
+  onScheduleFrequencyChange(value: ReindexFrequency): void {
+    this.scheduleFrequency.set(value);
+    this.persistSchedule();
+  }
 
+  onScheduleDayOfWeekChange(value: number): void {
+    this.scheduleDayOfWeek.set(value);
+    this.persistSchedule();
+  }
+
+  onScheduleDayOfMonthChange(value: number): void {
+    this.scheduleDayOfMonth.set(value);
+    this.persistSchedule();
+  }
+
+  onScheduleHourChange(value: number): void {
+    this.scheduleHour.set(value);
+    this.persistSchedule();
+  }
+
+  onScheduleMinutePresetChange(value: number): void {
+    this.scheduleMinute.set(value);
+    this.persistSchedule();
+  }
+
+  private persistSchedule(): void {
+    const chatbot = this.chatbot();
     const enabled = this.scheduleEnabled();
     const frequency = this.scheduleFrequency();
 
@@ -366,7 +389,6 @@ export class ChatbotSettingsComponent {
       minute: this.scheduleMinute(),
     };
 
-    this.isSavingSchedule.set(true);
     this.scheduleError.set(null);
 
     this.chatbotService.setReindexSchedule(chatbot.id, payload).subscribe({
@@ -380,14 +402,12 @@ export class ChatbotSettingsComponent {
           reindex_schedule_hour: schedule.hour,
           reindex_schedule_minute: schedule.minute,
         });
-        this.isSavingSchedule.set(false);
       },
       error: (err) => {
         console.error('Error saving reindex schedule:', err);
         this.scheduleError.set(
           err?.error?.detail ?? 'editChatbot.scheduleSaveFailed'
         );
-        this.isSavingSchedule.set(false);
       },
     });
   }
