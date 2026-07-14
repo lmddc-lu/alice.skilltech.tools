@@ -64,6 +64,12 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
         self._document_stores = {}
         self._default_index = QDRANT_INDEX
 
+        # Indexing pipelines are expensive to build: each loads native
+        # tokenizer/ONNX models whose memory is never returned to the OS, so
+        # rebuilding per job leaks. Cache them per config and reuse across jobs.
+        self._pipelines = {}
+        self._pipeline_cache_lock = threading.Lock()
+
         self.document_store = self._get_document_store()
 
         self.job_store = RedisJobStore(REDIS_URL, JOB_TTL)
@@ -128,13 +134,13 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
                 ocr_lang=DOCLING_OCR_LANG,
                 pdf_backend=DOCLING_PDF_BACKEND,
                 table_mode=DOCLING_TABLE_MODE,
+                do_formula_enrichment=DOCLING_DO_FORMULA_ENRICHMENT,
                 document_timeout=DOCLING_DOCUMENT_TIMEOUT,
             ),
         )
 
         pipeline.add_component(
             "chunker",
-                do_formula_enrichment=DOCLING_DO_FORMULA_ENRICHMENT,
             DoclingChunker(
                 tokenizer=CHUNKER_TOKENIZER,
                 max_tokens=CHUNKER_MAX_TOKENS,
@@ -184,6 +190,54 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
             pipeline.connect("log_embedded.documents", "writer.documents")
 
         return pipeline
+
+    def _get_indexing_pipeline(
+        self,
+        index_name: str | None,
+        document_store,
+        force_ocr: bool,
+        embed_model: str | None,
+        sparse_model: str | None,
+    ) -> tuple[Pipeline, threading.Lock]:
+        """Return a cached indexing pipeline and its run lock for this config.
+
+        Building a pipeline loads native tokenizer/ONNX models whose memory is
+        never returned to the OS, so pipelines are cached per config and reused.
+        The returned lock serializes runs on the shared instance, since Haystack
+        components are not safe to run concurrently on one pipeline.
+        """
+        key = (
+            index_name or self._default_index,
+            embed_model or EMBED_MODEL,
+            sparse_model or SPARSE_EMBED_MODEL,
+            bool(force_ocr),
+        )
+        with self._pipeline_cache_lock:
+            entry = self._pipelines.get(key)
+            if entry is None:
+                entry = {
+                    "pipeline": self._create_indexing_pipeline(
+                        document_store,
+                        force_ocr=force_ocr,
+                        embed_model=embed_model,
+                        sparse_model=sparse_model,
+                    ),
+                    "lock": threading.Lock(),
+                }
+                self._pipelines[key] = entry
+            return entry["pipeline"], entry["lock"]
+
+    def _invalidate_pipeline_cache(self, index_name: str | None) -> None:
+        """Drop cached pipelines bound to an index after it is recreated.
+
+        A recreated index gets a fresh document store; pipelines built against
+        the old store must be discarded so the writer targets the new one.
+        """
+        target = index_name or self._default_index
+        with self._pipeline_cache_lock:
+            stale = [key for key in self._pipelines if key[0] == target]
+            for key in stale:
+                del self._pipelines[key]
 
     def _save_uploaded_files(self, files: list[UploadFile]) -> list[str]:
         """Save uploaded files to a temp dir and return paths."""
@@ -311,13 +365,16 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
             # API-dictated embedding config (falls back to env). The same config
             # must shape both the store (dim/sparse) and the embedders (models).
             cfg = resolve_embedding_config(embedding_config)
+            if recreate_index:
+                self._invalidate_pipeline_cache(index_name)
             document_store = self._get_document_store(
                 index_name,
                 recreate_index,
                 embedding_dim=cfg["dim"],
                 desired_sparse=bool(cfg["sparse_model"]),
             )
-            pipeline = self._create_indexing_pipeline(
+            pipeline, run_lock = self._get_indexing_pipeline(
+                index_name,
                 document_store,
                 force_ocr=force_ocr,
                 embed_model=cfg["model"],
@@ -331,21 +388,41 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
             logger.info(
                 f"[Job {job_id}] Starting pipeline run with paths: {valid_paths}"
             )
-            pipeline_input = {"converter": {"paths": valid_paths}}
-            if parsed_file_metadata:
-                pipeline_input["converter"]["path_metadata"] = (
-                    self._build_path_metadata(valid_paths, parsed_file_metadata)
-                )
-            result = self._run_pipeline_with_qdrant_retry(
-                pipeline, pipeline_input, job_id
+            path_metadata = (
+                self._build_path_metadata(valid_paths, parsed_file_metadata)
+                if parsed_file_metadata
+                else {}
             )
+
+            # Run one file at a time: a whole-job run holds every file's
+            # converted document, chunks and embeddings in memory at once, so
+            # peak RSS grows with job size instead of the largest single file.
+            documents_written = 0
+            failed_files = []
+            for file_index, path in enumerate(valid_paths):
+                pipeline_input = {"converter": {"paths": [path]}}
+                if path in path_metadata:
+                    pipeline_input["converter"]["path_metadata"] = {
+                        path: path_metadata[path]
+                    }
+                with run_lock:
+                    result = self._run_pipeline_with_qdrant_retry(
+                        pipeline, pipeline_input, job_id
+                    )
+                documents_written += result.get("writer", {}).get(
+                    "documents_written", 0
+                )
+                failed_files.extend(result.get("converter", {}).get("failed_files", []))
+                self.job_store.update_job(
+                    job_id,
+                    status="running",
+                    stage="running_pipeline",
+                    progress_pct=30 + (60 * (file_index + 1)) // len(valid_paths),
+                )
 
             self.job_store.update_job(
                 job_id, status="running", stage="finalizing", progress_pct=90
             )
-
-            documents_written = result.get("writer", {}).get("documents_written", [])
-            failed_files = result.get("converter", {}).get("failed_files", [])
 
             all_failed = len(failed_files) == len(valid_paths)
             response = {
