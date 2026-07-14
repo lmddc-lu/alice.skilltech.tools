@@ -161,7 +161,7 @@ services:
     ports:
       - "1418:8000"
     environment:
-      - PII_MODEL_NAME=${PII_MODEL_NAME}
+      - PII_MODEL_NAME=${PII_MODEL_NAME:-tabularisai/eu-pii-safeguard}
       - PII_DEVICE=${PII_DEVICE:--1}
       - PII_STRIDE=${PII_STRIDE:-64}
       - HF_HOME=/models

@@ -13,3 +13,4 @@ monitoring/rabbitmq/*
 !monitoring/rabbitmq/20-prometheus.conf
 .gitlab*
 .coverage
+scripts
