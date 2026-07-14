@@ -33,6 +33,7 @@ class DoclingServeConverter:
         pdf_backend: str = "docling_parse",
         table_mode: str = "accurate",
         do_table_structure: bool = True,
+        do_formula_enrichment: bool = False,
         include_images: bool = False,
         abort_on_error: bool = False,
         document_timeout: float = 240.0,
@@ -62,6 +63,7 @@ class DoclingServeConverter:
         self.pdf_backend = pdf_backend
         self.table_mode = table_mode
         self.do_table_structure = do_table_structure
+        self.do_formula_enrichment = do_formula_enrichment
         self.include_images = include_images
         self.abort_on_error = abort_on_error
         self.document_timeout = document_timeout
@@ -90,6 +92,7 @@ class DoclingServeConverter:
             "pdf_backend": self.pdf_backend,
             "table_mode": self.table_mode,
             "do_table_structure": self.do_table_structure,
+            "do_formula_enrichment": self.do_formula_enrichment,
             "include_images": self.include_images,
             "abort_on_error": self.abort_on_error,
             "document_timeout": self.document_timeout,
@@ -109,6 +112,7 @@ class DoclingServeConverter:
             "pdf_backend": self.pdf_backend,
             "table_mode": self.table_mode,
             "do_table_structure": str(self.do_table_structure).lower(),
+            "do_formula_enrichment": str(self.do_formula_enrichment).lower(),
             "include_images": str(self.include_images).lower(),
             "abort_on_error": str(self.abort_on_error).lower(),
             "document_timeout": str(self.document_timeout),

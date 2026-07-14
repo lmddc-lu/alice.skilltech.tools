@@ -42,6 +42,12 @@ services:
       - DOCLING_SERVE_ENABLE_UI=1
       - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=2
       - DOCLING_SERVE_ENG_LOC_SHARE_MODELS=true
+    volumes:
+      # Persist the model artifacts cache. An empty named volume is seeded from
+      # the image's pre-baked models on first start; the CodeFormula model
+      # (needed for do_formula_enrichment) is added via docling-tools and then
+      # survives image updates.
+      - docling_models:/opt/app-root/src/.cache/docling/models
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
@@ -70,6 +76,7 @@ services:
       - DOCLING_PDF_BACKEND=${DOCLING_PDF_BACKEND}
       - DOCLING_TABLE_MODE=${DOCLING_TABLE_MODE}
       - DOCLING_DOCUMENT_TIMEOUT=${DOCLING_DOCUMENT_TIMEOUT}
+      - DOCLING_DO_FORMULA_ENRICHMENT=${DOCLING_DO_FORMULA_ENRICHMENT}
       - LLM_API_BASE=${LLM_API_BASE}
       - LLM_API_KEY=${LLM_API_KEY}
       - GENERATION_MODEL_ID=${GENERATION_MODEL_ID}
@@ -117,6 +124,7 @@ services:
       - DOCLING_PDF_BACKEND=${DOCLING_PDF_BACKEND}
       - DOCLING_TABLE_MODE=${DOCLING_TABLE_MODE}
       - DOCLING_DOCUMENT_TIMEOUT=${DOCLING_DOCUMENT_TIMEOUT}
+      - DOCLING_DO_FORMULA_ENRICHMENT=${DOCLING_DO_FORMULA_ENRICHMENT}
       - LLM_API_BASE=${LLM_API_BASE}
       - LLM_API_KEY=${LLM_API_KEY}
       - GENERATION_MODEL_ID=${GENERATION_MODEL_ID}
@@ -170,6 +178,7 @@ volumes:
   qdrant_data:
   valkey_data:
   pii_model_cache:
+  docling_models:
 
 configs:
   qdrant_config:

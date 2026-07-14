@@ -68,6 +68,12 @@ DOCLING_PDF_BACKEND = (
     _get_env_from_colab_or_os("DOCLING_PDF_BACKEND") or "docling_parse"
 )
 DOCLING_TABLE_MODE = _get_env_from_colab_or_os("DOCLING_TABLE_MODE") or "accurate"
+# decodes detected formulas into LaTeX via docling's CodeFormula model; off by
+# default because it adds an enrichment pass per formula crop. When off, docling
+# emits "<!-- formula-not-decoded -->" placeholders instead of LaTeX.
+DOCLING_DO_FORMULA_ENRICHMENT = (
+    _get_env_from_colab_or_os("DOCLING_DO_FORMULA_ENRICHMENT") or "false"
+).lower() in ("true", "1", "yes")
 DOCLING_DOCUMENT_TIMEOUT = float(
     _get_env_from_colab_or_os("DOCLING_DOCUMENT_TIMEOUT") or "240"
 )
@@ -124,6 +130,7 @@ RAG_USER_TEMPLATE = """<context>
 
 def get_ingest_files():
     """List files in the ingest folder."""
+- Write mathematical expressions in LaTeX: use $...$ for inline math and $$...$$ for display equations.
     if not INGEST_FOLDER.exists():
         raise FileNotFoundError(f"Ingest folder '{INGEST_FOLDER}' does not exist")
 

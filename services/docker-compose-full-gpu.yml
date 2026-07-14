@@ -60,6 +60,12 @@ services:
       - DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT=600
       - DOCLING_SERVE_MAX_NUM_PAGES=2000
       - DOCLING_SERVE_MAX_FILE_SIZE=209715200    # 200 MB
+    volumes:
+      # Persist the model artifacts cache. An empty named volume is seeded from
+      # the image's pre-baked models on first start; the CodeFormula model
+      # (needed for do_formula_enrichment) is added via docling-tools and then
+      # survives image updates.
+      - docling_models:/opt/app-root/src/.cache/docling/models
     deploy:
       resources:
         reservations:
@@ -102,6 +108,7 @@ services:
       - DOCLING_PDF_BACKEND=${DOCLING_PDF_BACKEND}
       - DOCLING_TABLE_MODE=${DOCLING_TABLE_MODE}
       - DOCLING_DOCUMENT_TIMEOUT=${DOCLING_DOCUMENT_TIMEOUT}
+      - DOCLING_DO_FORMULA_ENRICHMENT=${DOCLING_DO_FORMULA_ENRICHMENT}
       - LLM_API_BASE=${LLM_API_BASE}
       - LLM_API_KEY=${LLM_API_KEY}
       - GENERATION_MODEL_ID=${GENERATION_MODEL_ID}
@@ -147,6 +154,7 @@ services:
       - DOCLING_PDF_BACKEND=${DOCLING_PDF_BACKEND}
       - DOCLING_TABLE_MODE=${DOCLING_TABLE_MODE}
       - DOCLING_DOCUMENT_TIMEOUT=${DOCLING_DOCUMENT_TIMEOUT}
+      - DOCLING_DO_FORMULA_ENRICHMENT=${DOCLING_DO_FORMULA_ENRICHMENT}
       - LLM_API_BASE=${LLM_API_BASE}
       - LLM_API_KEY=${LLM_API_KEY}
       - GENERATION_MODEL_ID=${GENERATION_MODEL_ID}
@@ -210,6 +218,7 @@ volumes:
   qdrant_data:
   valkey_data:
   pii_model_cache:
+  docling_models:
 
 configs:
   qdrant_config:

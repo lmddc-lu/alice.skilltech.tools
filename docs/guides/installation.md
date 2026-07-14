@@ -86,6 +86,27 @@ docker compose -f docker-compose-full-gpu.yml up --build -d
 
 Once it is up, the main stack's Hayhooks health check should pass.
 
+## Optional: decode formulas to LaTeX
+
+By default Docling detects mathematical formulas but does not decode them - they appear as `<!-- formula-not-decoded -->` placeholders in the parsed text. Enabling formula enrichment runs Docling's CodeFormula model to convert each formula into LaTeX. This adds an extra model pass per formula, so leave it off unless your documents are formula-heavy.
+
+To enable it:
+
+1. Set `DOCLING_DO_FORMULA_ENRICHMENT=true` in `services/.env`.
+2. Download the CodeFormula model into Docling's model cache. The `docling_models` named volume persists it across restarts, so this is a one-time step:
+
+   ```bash
+   docker exec docling docling-tools models download code_formula
+   ```
+
+3. Recreate the services that read the flag so it takes effect:
+
+   ```bash
+   docker compose -f docker-compose-full-gpu.yml up -d --force-recreate docling hayhooks-ingestion
+   ```
+
+Documents ingested before enabling this keep their placeholders; re-ingest them to get the decoded LaTeX.
+
 ## 6. Verify the installation
 
 Open [localhost:4200](http://localhost:4200). Log in via OIDC, create a chatbot, upload a small document, and start a conversation with it. If the chatbot answers with a citation back to your document, everything is wired up correctly.

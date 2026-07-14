@@ -129,6 +129,8 @@ interface ChatMessage {
             <div class="message-content">
               <markdown
                 class="variable-binding message-text"
+                katex
+                [mermaid]="renderMermaidFor(message)"
                 [data]="formatCitations(message.content)"
               ></markdown>
               @if (message.citations?.length) {
@@ -311,6 +313,15 @@ export class ChatInterfaceComponent {
       if (this.isLoading()) return;
       this.saveMessagesToStorage(id, msgs);
     });
+
+    // Lazy-load mermaid the first time a finalized message contains a diagram.
+    effect(() => {
+      if (this.mermaidLoaded()) return;
+      const needsMermaid = this.messages().some(
+        (m) => !this.isMessageStreaming(m) && m.content.includes('```mermaid')
+      );
+      if (needsMermaid) this.ensureMermaid();
+    });
   }
 
   private storageKey(id: string): string {
@@ -375,6 +386,9 @@ export class ChatInterfaceComponent {
   promptSuggestions = input<string[]>([]);
   // Falls back to the persona's bundled avatar when null/undefined.
   avatarUrl = input<string | null>(null);
+  // Instance-admin branding. Null values fall back to the default look.
+  accentColor = input<string | null>(null);
+  headerLogoUrl = input<string | null>(null);
   // When false, conversation is in-memory only and wiped on reload.
   persistSession = input<boolean>(false);
   // Where citation links open. '_parent' breaks out of an iframe to the host
@@ -386,9 +400,6 @@ export class ChatInterfaceComponent {
 
   private personaAvatarUrl = computed(() => {
     switch (this.personaType()) {
-  // Instance-admin branding. Null values fall back to the default look.
-  accentColor = input<string | null>(null);
-  headerLogoUrl = input<string | null>(null);
       case 'teacher':
         return '/icons/avatar1.png';
       case 'studycompanion':
@@ -404,6 +415,11 @@ export class ChatInterfaceComponent {
     () => this.avatarUrl() ?? this.personaAvatarUrl(),
   );
 
+  // Falls back to the default product logo when no custom header logo is set.
+  effectiveHeaderLogoUrl = computed(
+    () => this.headerLogoUrl() ?? '/icons/alice_logo.svg',
+  );
+
   // Custom uploads are square photos (cover-cropped); persona PNGs are
   // tall portraits that need oversize-and-offset framing.
   hasCustomAvatar = computed(() => !!this.avatarUrl());
@@ -415,11 +431,6 @@ export class ChatInterfaceComponent {
   // delta). Separates the pre-stream phase (request sent, server retrieving)
   // from the thinking phase (model generating, empty deltas streaming).
   streamStarted = signal<boolean>(false);
-  // Falls back to the default product logo when no custom header logo is set.
-  effectiveHeaderLogoUrl = computed(
-    () => this.headerLogoUrl() ?? '/icons/alice_logo.svg',
-  );
-
   isInputFocused = signal<boolean>(false);
   // True once the PII filter has actually stripped personal data from a message
   // in this conversation; drives the "don't share personal info" warning.
@@ -427,6 +438,37 @@ export class ChatInterfaceComponent {
   piiWarningDismissed = signal<boolean>(false);
 
   private currentAssistantMessageId: string | null = null;
+
+  // Mermaid ships a 3.6MB bundle, so it is dynamically imported and attached to
+  // the global scope only once a finalized message actually contains a diagram
+  // (ngx-markdown's renderMermaid reads a global `mermaid`).
+  mermaidLoaded = signal<boolean>(false);
+  private mermaidLoading = false;
+
+  private async ensureMermaid(): Promise<void> {
+    if (this.mermaidLoaded() || this.mermaidLoading) return;
+    this.mermaidLoading = true;
+    const mermaid = (await import('mermaid')).default;
+    (globalThis as { mermaid?: unknown }).mermaid = mermaid;
+    this.mermaidLoaded.set(true);
+  }
+
+  // A message is still streaming while it is the last one and a response is
+  // being generated. Mermaid must not run on a partial diagram (it throws), so
+  // rendering is gated until the message is finalized.
+  isMessageStreaming(message: ChatMessage): boolean {
+    const msgs = this.messages();
+    return (
+      this.isLoading() &&
+      message.role === 'assistant' &&
+      msgs.length > 0 &&
+      msgs[msgs.length - 1].id === message.id
+    );
+  }
+
+  renderMermaidFor(message: ChatMessage): boolean {
+    return this.mermaidLoaded() && !this.isMessageStreaming(message);
+  }
 
   // Message ids whose retrieved-chunks debug panel is expanded.
   private expandedDebug = signal<Set<string>>(new Set());
@@ -485,13 +527,43 @@ export class ChatInterfaceComponent {
     return remap;
   }
 
+  // KaTeX math spans ($$...$$ and $...$). Citation markup must never be
+  // injected inside these, or the HTML corrupts the LaTeX passed to KaTeX.
+  private static readonly MATH_SPAN_RE =
+    /(\$\$[\s\S]*?\$\$|\$(?:\\.|[^$\\\n])*?\$)/g;
+  // CJK citation brackets never occur in valid LaTeX, so they can be dropped
+  // from inside a formula; [n] optional args (e.g. \sqrt[3]) are left intact.
+  private static readonly MATH_CITATION_RE = /【\d+】/g;
+  // A citation flush against a closing $$/$ places its <sup> badge directly
+  // after the delimiter, which breaks marked-katex's closing rule (it requires
+  // whitespace, punctuation, or end-of-string after the delimiter). A leading
+  // space on the following segment keeps the formula recognizable as math.
+  private static readonly LEADING_CITATION_RE = /^(?:\[\d+\](?!\()|【\d+】)/;
+
   formatCitations(content: string): string {
     const remap = this.buildCitationRemap(content);
-    return content.replace(/(?:\[(\d+)\](?!\())|(?:【(\d+)】)/g, (_, n1, n2) => {
-      const originalId = parseInt(n1 || n2, 10);
-      const displayId = remap.get(originalId) ?? originalId;
-      return `<sup class="inline-citation">${displayId}</sup>`;
-    });
+    const toBadges = (text: string): string =>
+      text.replace(/(?:\[(\d+)\](?!\())|(?:【(\d+)】)/g, (_, n1, n2) => {
+        const originalId = parseInt(n1 || n2, 10);
+        const displayId = remap.get(originalId) ?? originalId;
+        return `<sup class="inline-citation">${displayId}</sup>`;
+      });
+    // Split on math spans: even segments are text (citations -> badges), odd
+    // segments are the math spans themselves (kept verbatim, CJK markers dropped).
+    return content
+      .split(ChatInterfaceComponent.MATH_SPAN_RE)
+      .map((part, i) => {
+        if (i % 2 === 1) {
+          return part.replace(ChatInterfaceComponent.MATH_CITATION_RE, '');
+        }
+        // Text segments after index 0 immediately follow a math span. If one
+        // starts with a citation, insert a space so the preceding delimiter is
+        // followed by whitespace and the formula still renders.
+        const needsSpace =
+          i > 0 && ChatInterfaceComponent.LEADING_CITATION_RE.test(part);
+        return (needsSpace ? ' ' : '') + toBadges(part);
+      })
+      .join('');
   }
 
   groupCitations(citations: Citation[], content: string): GroupedCitation[] {

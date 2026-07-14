@@ -13,6 +13,7 @@ from components.DoclingServeConverter import DoclingServeConverter
 from config import (
     CHUNKER_MAX_TOKENS,
     CHUNKER_TOKENIZER,
+    DOCLING_DO_FORMULA_ENRICHMENT,
     DOCLING_DOCUMENT_TIMEOUT,
     DOCLING_OCR_ENGINE,
     DOCLING_OCR_LANG,
@@ -133,6 +134,7 @@ class IngestionPipelineWrapper(BasePipelineWrapper):
 
         pipeline.add_component(
             "chunker",
+                do_formula_enrichment=DOCLING_DO_FORMULA_ENRICHMENT,
             DoclingChunker(
                 tokenizer=CHUNKER_TOKENIZER,
                 max_tokens=CHUNKER_MAX_TOKENS,
