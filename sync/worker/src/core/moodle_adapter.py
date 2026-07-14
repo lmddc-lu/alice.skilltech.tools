@@ -596,6 +596,7 @@ class MoodleSourceAdapter(SourceAdapter):
             logger.info(f"Downloading course: {course['fullname']} (ID: {course_id})")
             course_name = course.get("fullname", "Unknown Course")
             files_downloaded = 0
+            access_denied = 0
 
             # manifest maps S3 filenames to metadata (source_url, display name)
             # for both attached files and extracted text content
@@ -659,6 +660,7 @@ class MoodleSourceAdapter(SourceAdapter):
                             # fail the same way. skip the rest of the
                             # activity instead of replaying the failure.
                             remaining = len(activity_files) - idx - 1
+                            access_denied += remaining + 1
                             logger.warning(
                                 "Access denied to activity %s (%s) in course %s: %s. "
                                 "Skipping %d sibling file(s).",
@@ -682,6 +684,21 @@ class MoodleSourceAdapter(SourceAdapter):
                 owner_email,
                 moodle_domain,
             )
+
+            # every downloadable file was access-denied and no text content came
+            # through: the token can read the course export but lacks the
+            # file-download capability. Returning 0 here would let the job
+            # complete "successfully" having ingested nothing (or serving only a
+            # stale copy already in storage), so fail loudly with a permission
+            # error the operator can act on. Raised before the prune below so a
+            # usable stale object is not deleted on the way out.
+            if files_downloaded == 0 and access_denied > 0 and not text_items:
+                raise MoodleAccessException(
+                    f"Token lacks download permission for course {course_id} "
+                    f"('{course_name}'): all {access_denied} file(s) denied and "
+                    f"no text content available"
+                )
+
             if text_items:
                 text_content_prefix = (
                     f"{base_path}/moodle/{domain_clean}/course_{course_id}/text_content"
@@ -742,7 +759,11 @@ class MoodleSourceAdapter(SourceAdapter):
             ]
 
             return files_downloaded, pruned
-        except (MoodleAuthenticationError, MoodleConnectionError):
+        except (
+            MoodleAuthenticationError,
+            MoodleConnectionError,
+            MoodleAccessException,
+        ):
             raise
         except Exception as e:
             logger.error(f"Error downloading course {course_id}: {e}")

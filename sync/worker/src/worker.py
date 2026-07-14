@@ -11,6 +11,7 @@ from config import Config
 from core.file_adapter import FileSourceAdapter
 from core.moodle_adapter import MoodleSourceAdapter
 from core.moodle_export_client import (
+    MoodleAccessException,
     MoodleAuthenticationError,
     MoodleConnectionError,
 )
@@ -300,6 +301,20 @@ class SyncWorker:
                     f"Downloaded {files_downloaded} files."
                 )
 
+            except MoodleAccessException as e:
+                # valid token, but it lacks the file-download capability for
+                # selected content: an authorization failure, so fail the job
+                # in the auth bucket rather than letting it complete empty.
+                job_status["value"] = JOB_STATUS_AUTH_ERROR
+                logger.error(f"Access denied during content sync: {e}")
+                self._handle_auth_error(
+                    method,
+                    body,
+                    str(e),
+                    job_id,
+                    error_detail=traceback.format_exc(),
+                    error_kind="auth",
+                )
             except (MoodleAuthenticationError, MoodleConnectionError) as e:
                 job_status["value"] = JOB_STATUS_AUTH_ERROR
                 logger.error(f"Authentication/Connection error in content sync: {e}")
@@ -467,6 +482,20 @@ class SyncWorker:
             except JobCancelledException:
                 job_status["value"] = JOB_STATUS_CANCELLED
                 logger.info(f"Job {job_id} cancelled, no completion published")
+            except MoodleAccessException as e:
+                # valid token, but it lacks the file-download capability for
+                # selected content: an authorization failure, so fail the job
+                # in the auth bucket rather than letting it complete empty.
+                job_status["value"] = JOB_STATUS_AUTH_ERROR
+                logger.error(f"Access denied during ingestion: {e}")
+                self._handle_auth_error(
+                    method,
+                    body,
+                    str(e),
+                    job_id,
+                    error_detail=traceback.format_exc(),
+                    error_kind="auth",
+                )
             except (MoodleAuthenticationError, MoodleConnectionError) as e:
                 job_status["value"] = JOB_STATUS_AUTH_ERROR
                 logger.error(f"Authentication/Connection error in ingestion: {e}")
