@@ -27,7 +27,7 @@
               height="20"
             />
           </button>
-          <h1 [title]="chatbot()?.name">{{ chatbot()?.name }}</h1>
+          <h1 [title]="$safeNavigationMigration(chatbot()?.name)">{{ chatbot()?.name }}</h1>
           <span class="status-badge" [class]="statusConfig().class">
             @if (isProcessing()) {
               <div class="loading-spinner small"></div>
@@ -130,7 +130,7 @@
                 }}</label>
                 @if (!isEditingName()) {
                 <div class="field-display">
-                  <span class="field-value" [title]="chatbot()?.name">{{
+                  <span class="field-value" [title]="$safeNavigationMigration(chatbot()?.name)">{{
                     chatbot()?.name
                   }}</span>
                   <button
@@ -825,14 +825,14 @@
   </div>
   } @if (showMoodleContentBrowser()) {
   <app-moodle-content-browser
-    [chatbotId]="chatbot()?.id!"
+    [chatbotId]="$safeNavigationMigration(chatbot()?.id)!"
     [isOpen]="showMoodleContentBrowser()"
     [linkedCourses]="linkedCourses()"
     (close)="handleMoodleContentBrowserClose()"
   />
   } @if (isModalOpen()) {
   <app-moodle-courses-modal
-    [chatbotId]="chatbot()?.id!"
+    [chatbotId]="$safeNavigationMigration(chatbot()?.id)!"
     [isOpen]="isModalOpen()"
     (close)="handleModalClose()"
     (saved)="handleCoursesSaved()"
@@ -840,7 +840,7 @@
   }
   @if (showFileContentBrowser()) {
   <app-file-content-browser
-    [chatbotId]="chatbot()?.id!"
+    [chatbotId]="$safeNavigationMigration(chatbot()?.id)!"
     [isOpen]="showFileContentBrowser()"
     [files]="files()"
     (close)="handleFileContentBrowserClose()"
@@ -848,7 +848,7 @@
   }
   @if (showFileManager()) {
   <app-file-manager-modal
-    [chatbotId]="chatbot()?.id!"
+    [chatbotId]="$safeNavigationMigration(chatbot()?.id)!"
     [isOpen]="showFileManager()"
     [initialFiles]="files()"
     (close)="handleFileManagerClose()"

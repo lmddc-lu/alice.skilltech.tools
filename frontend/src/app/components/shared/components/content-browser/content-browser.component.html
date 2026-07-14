@@ -29,7 +29,7 @@
           <p>{{ emptyText() }}</p>
         </div>
         } @else {
-        <ul ngTree #tree="ngTree" [(values)]="selectedValue" class="content-tree">
+        <ul ngTree #tree="ngTree" [(value)]="selectedValue" class="content-tree">
           <ng-template
             [ngTemplateOutlet]="nodesTpl"
             [ngTemplateOutletContext]="{ nodes: treeNodes(), parent: tree }"

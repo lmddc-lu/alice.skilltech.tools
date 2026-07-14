@@ -36,7 +36,7 @@
     @if (activeTab() === 'chatbot') {
     <div class="row">
       <label>Chatbot</label>
-      <select [ngModel]="selectedState()?.chatbot?.id" (ngModelChange)="onSelectedChatbotChange($event)">
+      <select [ngModel]="$safeNavigationMigration(selectedState()?.chatbot?.id)" (ngModelChange)="onSelectedChatbotChange($event)">
         @for (s of chatbots(); track s.chatbot.id) {
         <option [ngValue]="s.chatbot.id">{{ s.chatbot.name }}</option>
         }

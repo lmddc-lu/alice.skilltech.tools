@@ -3,8 +3,8 @@ FROM node:lts-alpine as build
 # Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY package*.json ./
+# Copy package manifests and .npmrc (legacy-peer-deps needed until angularx-qrcode ships v22)
+COPY package*.json .npmrc ./
 
 # Install dependencies
 RUN npm install
