@@ -7,6 +7,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import asdict, dataclass, field
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,15 @@ def _resolve_within(base_path: Path, rel: str) -> Path | None:
     if target != base and base not in target.parents:
         return None
     return target
+
+
+def _clean_html(html: str) -> str:
+    """Strip tags and normalise whitespace from a Rise HTML snippet."""
+    if not html:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 class ScormParsingError(Exception):
@@ -293,8 +303,9 @@ class HTMLExtractor(HTMLParser):
 
 
 class ScormManifestParser:
-    """SCORM manifest parser. Supports 2004."""
+    """SCORM manifest parser. Supports SCORM 1.2 and 2004."""
 
+    # Default (SCORM 2004) namespaces; imscp/adlcp are re-detected per manifest.
     NAMESPACES = {
         "imscp": "http://www.imsglobal.org/xsd/imscp_v1p1",
         "adlcp": "http://www.adlnet.org/xsd/adlcp_v1p3",
@@ -304,6 +315,10 @@ class ScormManifestParser:
         "xsi": "http://www.w3.org/2001/XMLSchema-instance",
     }
 
+    # SCORM 1.2 pairs the rootv1p1p2 content-packaging schema with the
+    # rootv1p2 ADL extension schema instead of the 2004 v1p3 URIs.
+    SCORM12_ADLCP = "http://www.adlnet.org/xsd/adlcp_rootv1p2"
+
     def __init__(self, manifest_path: str):
         self.manifest_path = Path(manifest_path)
         if not self.manifest_path.exists():
@@ -312,12 +327,30 @@ class ScormManifestParser:
         # lxml handles namespaces better when available
         if HAS_LXML:
             self.tree = etree.parse(str(self.manifest_path))
-            self.root = self.tree.getroot()
         else:
             self.tree = ET.parse(self.manifest_path)
-            self.root = self.tree.getroot()
+        self.root = self.tree.getroot()
+
+        # SCORM 1.2 and 2004 use different core namespace URIs; detect the
+        # manifest's actual namespaces so imscp/adlcp lookups match both.
+        self.NAMESPACES = self._detect_namespaces()
+
+        if not HAS_LXML:
             for prefix, uri in self.NAMESPACES.items():
                 ET.register_namespace(prefix, uri)
+
+    def _detect_namespaces(self) -> dict[str, str]:
+        namespaces = dict(self.NAMESPACES)
+
+        root_tag = str(self.root.tag)
+        match = re.match(r"\{([^}]+)\}", root_tag)
+        if match:
+            imscp_uri = match.group(1)
+            namespaces["imscp"] = imscp_uri
+            if "imscp_rootv1p1p2" in imscp_uri:
+                namespaces["adlcp"] = self.SCORM12_ADLCP
+
+        return namespaces
 
     def parse_metadata(self) -> dict[str, Any]:
         metadata = {}
@@ -548,15 +581,15 @@ class ScormManifestParser:
         identifier = res_elem.get("identifier", "")
         res_type = res_elem.get("type", "webcontent")
 
-        scorm_type = None
-
-        for _ns_prefix, ns_uri in [("adlcp", "http://www.adlnet.org/xsd/adlcp_v1p3")]:
-            scorm_type = res_elem.get(f"{{{ns_uri}}}scormType")
-            if scorm_type:
-                break
-
-        if not scorm_type:
-            scorm_type = res_elem.get("scormType")
+        # scormType lives in the ADL namespace; casing differs by edition
+        # (scormType in 2004, scormtype in 1.2).
+        adlcp_uri = self.NAMESPACES.get("adlcp", "")
+        scorm_type = (
+            res_elem.get(f"{{{adlcp_uri}}}scormType")
+            or res_elem.get(f"{{{adlcp_uri}}}scormtype")
+            or res_elem.get("scormType")
+            or res_elem.get("scormtype")
+        )
 
         href = res_elem.get("href")
 
@@ -652,6 +685,8 @@ class ScormManifestParser:
 class RiseArticulateParser:
     def __init__(self, base_path: Path):
         self.base_path = base_path
+        # l10nId -> HTML string, for localized Rise exports (empty otherwise).
+        self.l10n_map: dict[str, str] = {}
 
     def is_rise_package(self, package) -> bool:
         rise_indicators = [
@@ -669,26 +704,104 @@ class RiseArticulateParser:
         return False
 
     def extract_rise_content(self, package) -> RiseCourse | None:
-        locale_file = self._find_locale_file(package)
-        if not locale_file:
-            return None
-
-        compressed_data = self._extract_compressed_data(locale_file)
-        if not compressed_data:
+        encoded_data = self._find_encoded_course_data(package)
+        if not encoded_data:
             return None
 
         try:
-            course_data = self._decompress_rise_data(compressed_data)
+            course_data = self._decompress_rise_data(encoded_data)
+            self.l10n_map = self._build_l10n_map(course_data)
             return self._parse_rise_course(course_data)
         except Exception as e:
             print(f"Error decompressing Rise content: {e}")
             return None
+
+    def _build_l10n_map(self, data: dict) -> dict[str, str]:
+        """Build the l10nId -> string map for localized Rise exports.
+
+        Localized exports keep block text out of the course tree, storing it
+        under ``l10n.translations[<locale>]`` keyed by l10nId; blocks then hold
+        ``{"l10nId": ...}`` references instead of inline HTML.
+        """
+        l10n = data.get("l10n")
+        if not isinstance(l10n, dict):
+            return {}
+
+        translations = l10n.get("translations")
+        if not isinstance(translations, dict):
+            return {}
+
+        locale_map = translations.get(l10n.get("defaultLocale"))
+        if not isinstance(locale_map, dict):
+            # default locale absent or unnamed; use the first available locale
+            locale_map = next(
+                (v for v in translations.values() if isinstance(v, dict)), {}
+            )
+
+        return locale_map
+
+    def _resolve_text(self, value) -> str:
+        """Resolve a Rise text value to a raw string.
+
+        Inline text is a string; localized text is a ``{"l10nId": ...}``
+        reference into the translation map.
+        """
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            l10n_id = value.get("l10nId")
+            if l10n_id:
+                return self.l10n_map.get(l10n_id, "")
+        return ""
+
+    def _find_encoded_course_data(self, package) -> str | None:
+        """Locate the base64-encoded course payload.
+
+        Older Rise exports store it in a locales/*.js file; newer exports
+        embed it directly in scormcontent/index.html via ``deserialize("...")``.
+        """
+        locale_file = self._find_locale_file(package)
+        if locale_file:
+            data = self._extract_compressed_data(locale_file)
+            if data:
+                return data
+
+        return self._extract_embedded_data(package)
 
     def _find_locale_file(self, package) -> str | None:
         for resource in package.resources:
             for file_path in resource.files:
                 if "locales/" in file_path and file_path.endswith(".js"):
                     return file_path
+        return None
+
+    def _find_index_html(self, package) -> str | None:
+        for resource in package.resources:
+            for file_path in resource.files:
+                if file_path.endswith("scormcontent/index.html"):
+                    return file_path
+        return None
+
+    def _extract_embedded_data(self, package) -> str | None:
+        index_file = self._find_index_html(package)
+        if not index_file:
+            return None
+
+        full_path = _resolve_within(self.base_path, index_file)
+        if full_path is None or not full_path.exists():
+            return None
+
+        try:
+            with open(full_path, encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+        except OSError as e:
+            print(f"Error reading index file: {e}")
+            return None
+
+        match = re.search(r'deserialize\(\s*"([^"]+)"\s*\)', content)
+        if match:
+            return match.group(1)
+
         return None
 
     def _extract_compressed_data(self, locale_file: str) -> str | None:
@@ -742,7 +855,8 @@ class RiseArticulateParser:
 
         course = RiseCourse(
             id=course_info.get("id", ""),
-            title=course_info.get("title", "Untitled Course"),
+            title=_clean_html(self._resolve_text(course_info.get("title")))
+            or "Untitled Course",
             author=course_info.get("author", ""),
             color=course_info.get("color", ""),
             media=course_info.get("media", {}),
@@ -753,7 +867,8 @@ class RiseArticulateParser:
         for lesson_data in lessons_data:
             lesson = RiseLesson(
                 id=lesson_data.get("id", ""),
-                title=lesson_data.get("title", "Untitled Lesson"),
+                title=_clean_html(self._resolve_text(lesson_data.get("title")))
+                or "Untitled Lesson",
                 type=lesson_data.get("type", ""),
                 icon=lesson_data.get("icon", ""),
                 course_id=lesson_data.get("courseId"),
@@ -777,35 +892,71 @@ class RiseArticulateParser:
 
         return "\n".join(text_parts)
 
+    # Keys that hold human-readable prose across Rise block variants. Media
+    # references (image/audio keys) live under other keys and are skipped.
+    _TEXT_KEYS = ("heading", "paragraph", "title", "caption", "description", "name")
+
     def _extract_items_text(self, items: list[dict]) -> str:
-        text_parts = []
-
-        for item in items:
-            item_type = item.get("type", "")
-
-            if item_type == "text":
-                text_items = item.get("items", [])
-                for text_item in text_items:
-                    paragraph = text_item.get("paragraph", "")
-                    if paragraph:
-                        clean_text = re.sub(r"<[^>]+>", "", paragraph)
-                        text_parts.append(clean_text.strip())
-
-            elif item_type == "image":
-                image_items = item.get("items", [])
-                for img_item in image_items:
-                    caption = img_item.get("caption", "")
-                    if caption:
-                        clean_caption = re.sub(r"<[^>]+>", "", caption)
-                        text_parts.append(f"[Image caption: {clean_caption.strip()}]")
-
-            nested_items = item.get("items", [])
-            if nested_items and item_type not in ["text", "image"]:
-                nested_text = self._extract_items_text(nested_items)
-                if nested_text:
-                    text_parts.append(nested_text)
-
+        text_parts: list[str] = []
+        self._collect_text(items, text_parts)
         return "\n".join(text_parts)
+
+    def _collect_text(self, node, parts: list[str]) -> None:
+        """Walk a block tree, collecting resolved prose from text-bearing keys.
+
+        Rise blocks nest inconsistently (hotspots, flashcard front/back, quote
+        author/body, columns), so recursion is more robust than per-type rules.
+        Knowledge checks and charts keep dedicated handling to preserve their
+        question/answer and label/value structure.
+        """
+        if isinstance(node, list):
+            for element in node:
+                self._collect_text(element, parts)
+            return
+
+        if not isinstance(node, dict):
+            return
+
+        if isinstance(node.get("answers"), list):
+            self._collect_knowledge_check(node, parts)
+            self._collect_text(node.get("items", []), parts)
+            return
+
+        if node.get("type") == "chart":
+            self._collect_chart(node, parts)
+            return
+
+        for key in self._TEXT_KEYS:
+            if key in node:
+                cleaned = _clean_html(self._resolve_text(node[key]))
+                if cleaned:
+                    parts.append(cleaned)
+
+        for key, value in node.items():
+            if key not in self._TEXT_KEYS and isinstance(value, (dict, list)):
+                self._collect_text(value, parts)
+
+    def _collect_knowledge_check(self, node: dict, parts: list[str]) -> None:
+        question = _clean_html(self._resolve_text(node.get("title")))
+        if question:
+            parts.append(f"Q: {question}")
+        for answer in node.get("answers", []):
+            answer_text = _clean_html(self._resolve_text(answer.get("title")))
+            if answer_text:
+                marker = " (correct)" if answer.get("correct") else ""
+                parts.append(f"- {answer_text}{marker}")
+        feedback = _clean_html(self._resolve_text(node.get("feedback")))
+        if feedback:
+            parts.append(f"Feedback: {feedback}")
+
+    def _collect_chart(self, node: dict, parts: list[str]) -> None:
+        title = _clean_html(self._resolve_text(node.get("title")))
+        if title:
+            parts.append(title)
+        for entry in node.get("items", []):
+            label = _clean_html(self._resolve_text(entry.get("type")))
+            if label:
+                parts.append(f"- {label}: {entry.get('value', '')}")
 
 
 class ContentExtractor:
