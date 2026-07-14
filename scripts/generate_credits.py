@@ -31,7 +31,8 @@ PY_PROJECTS: list[tuple[str, Path]] = [
 # Third-party Docker images referenced from Dockerfiles and docker-compose files.
 # Hand-curated: image license metadata isn't queryable in a standard way, and full
 # license texts aren't meaningful for multi-component images. Each entry lists the
-# pinned tag actually used, the SPDX-ish license identifier(s), and an upstream URL.
+# image reference, the SPDX-ish license identifier(s), and an upstream URL.
+# The version tag is stripped for display (see strip_image_tag).
 DOCKER_IMAGES: list[dict[str, str]] = [
     # Build / base images (Dockerfiles)
     {
@@ -61,9 +62,9 @@ DOCKER_IMAGES: list[dict[str, str]] = [
         "url": "https://www.postgresql.org/about/licence/",
     },
     {
-        "image": "redis:8-alpine",
-        "license": "RSALv2 OR SSPLv1 OR AGPL-3.0 (tri-license, Redis 8.0+)",
-        "url": "https://redis.io/legal/licenses/",
+        "image": "valkey/valkey:8-alpine",
+        "license": "BSD-3-Clause",
+        "url": "https://github.com/valkey-io/valkey/blob/unstable/COPYING",
     },
     {
         "image": "rabbitmq:4.2.1-management",
@@ -100,16 +101,6 @@ DOCKER_IMAGES: list[dict[str, str]] = [
         "license": "MIT",
         "url": "https://github.com/docling-project/docling-serve",
     },
-    {
-        "image": "mcr.microsoft.com/presidio-analyzer:2.2.362",
-        "license": "MIT",
-        "url": "https://github.com/microsoft/presidio",
-    },
-    {
-        "image": "mcr.microsoft.com/presidio-anonymizer:2.2.362",
-        "license": "MIT",
-        "url": "https://github.com/microsoft/presidio",
-    },
 ]
 
 
@@ -125,6 +116,13 @@ LICENSE_FILENAMES = [
 
 def normalize(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def strip_image_tag(image: str) -> str:
+    # Drop the version tag (":tag") while preserving any registry host prefix.
+    registry, _, remainder = image.rpartition("/")
+    name = remainder.split(":", 1)[0]
+    return f"{registry}/{name}" if registry else name
 
 
 SEP = "-" * 80
@@ -216,6 +214,10 @@ def read_frontend_entry(name: str) -> tuple[str, str] | None:
 
 def format_block(name: str, license_id: str, text: str) -> str:
     text = (text or "").strip()
+    # pip-licenses returns the literal "UNKNOWN" when a package ships no license
+    # file; treat it as no body so the block just shows the known license id.
+    if text == "UNKNOWN":
+        text = ""
     body = f"\n{text}\n" if text else "\n"
     return f'{SEP}\nPackage: {name}\nLicense: "{license_id}"\n{body}'
 
@@ -261,7 +263,7 @@ def main() -> int:
     out.append("# Docker images\n")
     for entry in DOCKER_IMAGES:
         out.append(
-            f'{SEP}\nImage: {entry["image"]}\nLicense: "{entry["license"]}"\nUpstream: {entry["url"]}\n'
+            f'{SEP}\nImage: {strip_image_tag(entry["image"])}\nLicense: "{entry["license"]}"\nUpstream: {entry["url"]}\n'
         )
     out.append(SEP + "\n")
     OUTPUT.write_text("\n".join(out))
