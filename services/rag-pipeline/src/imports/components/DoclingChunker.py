@@ -135,6 +135,8 @@ class DoclingChunker:
                         "filename",
                         "mime_type",
                         "source_url",
+                        "content_etag",
+                        "force_ocr",
                     ):
                         value = per_doc_meta.get(key)
                         if value is not None:

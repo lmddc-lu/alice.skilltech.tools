@@ -359,11 +359,13 @@ class SchedulerService:
                     )
                     return
                 indexing = IndexingService(broker)
+                # incremental: scheduled reindexes mostly re-sync unchanged
+                # Moodle content, so skip files already indexed unchanged
                 await indexing.trigger_reindex(
                     session=session,
                     knowledge_base_id=chatbot.knowledge_base_id,
                     user=owner,
-                    force=True,
+                    force=False,
                     force_ocr=chatbot.force_ocr,
                 )
                 logger.info(f"Scheduled reindex triggered for chatbot {chatbot_id}")

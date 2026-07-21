@@ -26,8 +26,13 @@ async def reindex_chatbot(
     chatbot_id: str,
     session: SessionDep,
     user: UserDep,
+    force: bool = False,
 ) -> dict[str, Any]:
-    """Manually trigger re-indexing of a chatbot's knowledge base."""
+    """Manually trigger re-indexing of a chatbot's knowledge base.
+
+    Incremental by default (unchanged files are skipped); pass force=true
+    to rebuild the collection from scratch.
+    """
     chatbot_repo = ChatbotRepository(session)
     indexing_service = IndexingService(router.broker)
 
@@ -42,7 +47,7 @@ async def reindex_chatbot(
             session=session,
             knowledge_base_id=chatbot.knowledge_base_id,
             user=user,
-            force=True,
+            force=force,
             force_ocr=chatbot.force_ocr,
         )
         logger.info(f"Started manual re-indexing for chatbot {chatbot_id}")

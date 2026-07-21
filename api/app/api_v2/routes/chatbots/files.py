@@ -206,11 +206,13 @@ async def update_chatbot_files(
     reindex_error = None
 
     if deleted_file_ids or uploaded_files_response:
+        # incremental: only added files are ingested; deleted files are
+        # removed from the index by the worker's orphan cleanup
         reindexing_started, reindex_error = await indexing_service.trigger_reindex_safe(
             session=session,
             knowledge_base_id=chatbot.knowledge_base_id,
             user=user,
-            force=True,
+            force=False,
         )
 
     return {

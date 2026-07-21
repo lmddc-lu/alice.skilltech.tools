@@ -189,6 +189,22 @@ def evaluate_drift(stored_manifest_json: str | None) -> DriftResult:
     return DriftResult(stale=True, reason=reason)
 
 
+def rebuild_decision(stored_manifest_json: str | None) -> DriftResult:
+    """Whether the next sync must recreate the collection (forced rebuild).
+
+    Unlike ``evaluate_drift`` (which errs towards serving), this errs towards
+    rebuilding: a NULL or unparseable manifest forces a rebuild, because only
+    a forced build guarantees the collection matches the desired config before
+    the completion handler stamps it. A recorded manifest forces a rebuild
+    exactly when its fingerprint drifted; otherwise the sync can stay
+    incremental.
+    """
+    stored = _parse_manifest_or_none(stored_manifest_json)
+    if stored is None:
+        return DriftResult(stale=True, reason="no index manifest recorded")
+    return evaluate_drift(stored_manifest_json)
+
+
 def enforce_index_freshness(kb) -> None:
     """Apply the configured drift policy to a KB about to be queried.
 

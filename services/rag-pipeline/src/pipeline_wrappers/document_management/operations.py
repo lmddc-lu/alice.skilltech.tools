@@ -2,7 +2,89 @@ from pathlib import Path
 from typing import Any
 
 from config import EMBEDDING_DIM, USE_SPARSE_EMBEDDINGS
+from index_config import _get_client
 from loguru import logger
+
+
+def get_index_inventory(index_name: str) -> dict[str, Any]:
+    """Per-file inventory of an index: file_id, filename, and content_etag.
+
+    Scrolls payload fields only (no vectors, no chunk content), so it stays
+    cheap on large collections. Uses a raw Qdrant client so inspecting a
+    missing collection never creates it; a missing collection is a valid
+    empty inventory (nothing indexed yet), not an error.
+
+    The sync worker compares this against source storage to skip unchanged
+    files on incremental (non-forced) syncs.
+    """
+    try:
+        client = _get_client()
+        if not client.collection_exists(index_name):
+            return {
+                "success": True,
+                "action": "inventory",
+                "index_name": index_name,
+                "collection_exists": False,
+                "total_files": 0,
+                "files": [],
+            }
+
+        files: dict[str, dict[str, Any]] = {}
+        offset = None
+        while True:
+            points, offset = client.scroll(
+                collection_name=index_name,
+                limit=1000,
+                offset=offset,
+                with_payload=[
+                    "meta.file_id",
+                    "meta.filename",
+                    "meta.file_name",
+                    "meta.content_etag",
+                    "meta.force_ocr",
+                ],
+                with_vectors=False,
+            )
+            for point in points:
+                meta = (point.payload or {}).get("meta") or {}
+                file_id = meta.get("file_id")
+                filename = meta.get("filename") or meta.get("file_name")
+                key = str(file_id) if file_id else filename
+                if not key:
+                    continue
+                entry = files.setdefault(
+                    key,
+                    {
+                        "file_id": str(file_id) if file_id else None,
+                        "filename": filename,
+                        "content_etag": meta.get("content_etag"),
+                        "force_ocr": meta.get("force_ocr"),
+                        "document_count": 0,
+                    },
+                )
+                entry["document_count"] += 1
+            if offset is None:
+                break
+
+        files_list = sorted(files.values(), key=lambda f: f["filename"] or "")
+        return {
+            "success": True,
+            "action": "inventory",
+            "index_name": index_name,
+            "collection_exists": True,
+            "total_files": len(files_list),
+            "files": files_list,
+        }
+    except Exception as e:
+        logger.error(f"Error building inventory for index '{index_name}': {e}")
+        return {
+            "success": False,
+            "action": "inventory",
+            "error": str(e),
+            "index_name": index_name,
+            "total_files": 0,
+            "files": [],
+        }
 
 
 def list_files(
@@ -156,9 +238,20 @@ def delete_documents(
                     dl_meta = doc.meta.get("dl_meta", {})
                     docling_meta = dl_meta.get("meta", {})
                     origin = docling_meta.get("origin", {})
-                    doc_filename = origin.get("filename", "")
+                    # match the flat names stamped by DoclingChunker as well
+                    # as the docling origin: display filenames (e.g. Moodle's
+                    # "Course > Activity > file.pdf") only exist in flat meta
+                    candidate_names = {
+                        origin.get("filename", ""),
+                        doc.meta.get("filename") or "",
+                        doc.meta.get("file_name") or "",
+                    }
+                    candidate_names.discard("")
 
-                    if doc_filename == filename or Path(doc_filename).name == filename:
+                    if any(
+                        name == filename or Path(name).name == filename
+                        for name in candidate_names
+                    ):
                         matching_docs.append(doc)
 
                 if matching_docs:

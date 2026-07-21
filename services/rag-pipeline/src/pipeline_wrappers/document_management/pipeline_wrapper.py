@@ -17,6 +17,7 @@ from .operations import (
     delete_documents,
     delete_index,
     get_file_content,
+    get_index_inventory,
     get_stats,
     list_files,
 )
@@ -70,11 +71,18 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
     ) -> dict[str, Any]:
         """Document management API.
 
-        :param action: 'list', 'delete', 'stats', or 'get_file_content'.
+        :param action: 'list', 'delete', 'stats', 'inventory', or
+            'get_file_content'.
         :param file_id: file UUID, preferred over file_name for get_file_content.
         :param file_ids: stable meta.file_id values for rename-proof delete.
         """
         try:
+            # inventory uses a raw client and must not build a document store:
+            # store init creates a missing collection as a side effect, while a
+            # missing collection is a valid empty inventory.
+            if action == "inventory":
+                return get_index_inventory(index_name or self._default_index)
+
             # delete with index_name but no file selectors targets the whole index
             is_index_deletion = (
                 action == "delete"
@@ -116,7 +124,7 @@ class DocumentManagementPipelineWrapper(BasePipelineWrapper):
             else:
                 return {
                     "success": False,
-                    "error": f"Unknown action: {action}. Valid actions: list, delete, stats, get_file_content",
+                    "error": f"Unknown action: {action}. Valid actions: list, delete, stats, inventory, get_file_content",
                     "index_name": index_name or self._default_index,
                     "hybrid_search_enabled": USE_SPARSE_EMBEDDINGS,
                 }

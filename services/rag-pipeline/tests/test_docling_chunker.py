@@ -95,6 +95,27 @@ class TestDocMetadataStamping:
 
         assert documents[0].meta["source_url"] == "https://example.com/page"
 
+    def test_content_etag_is_propagated_when_present(self, chunker_cls):
+        # incremental syncs compare this stamp against the storage etag to
+        # skip unchanged files
+        chunker = chunker_cls()
+        _install_fake_chunker(chunker, [_fake_chunk("body")])
+
+        docling_doc = _fake_docling_doc(origin_filename="doc.pdf")
+        doc_metadata = [
+            {
+                "file_id": "uuid-1",
+                "filename": "doc.pdf",
+                "content_etag": "abc123etag",
+            }
+        ]
+
+        documents = chunker.run(
+            docling_documents=[docling_doc], doc_metadata=doc_metadata
+        )["documents"]
+
+        assert documents[0].meta["content_etag"] == "abc123etag"
+
     def test_per_document_metadata_is_not_cross_contaminated(self, chunker_cls):
         """Two docs, two metadata entries. Chunks must carry their own."""
         chunker = chunker_cls()

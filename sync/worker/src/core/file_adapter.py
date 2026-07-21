@@ -12,6 +12,7 @@ from pathlib import Path
 
 from core.source_adapter import SourceAdapter
 from core.source_types import SourceType
+from storage.minio_client import object_etag
 
 logger = logging.getLogger(__name__)
 
@@ -78,13 +79,15 @@ class FileSourceAdapter(SourceAdapter):
                 filename = Path(file_path).name
                 mime_type = None
             try:
-                if self._file_exists(file_path):
+                stat = self._stat_object(file_path)
+                if stat is not None:
                     objects.append(
                         {
                             "path": Path(file_path),
                             "file_id": file_id,
                             "filename": filename,
                             "mime_type": mime_type,
+                            "content_etag": object_etag(stat),
                         }
                     )
                     logger.info(f"Added FILE datasource file: {file_path}")
@@ -95,11 +98,14 @@ class FileSourceAdapter(SourceAdapter):
         return objects
 
     def _file_exists(self, file_path: str) -> bool:
+        return self._stat_object(file_path) is not None
+
+    def _stat_object(self, file_path: str):
+        """Stat of the storage object, or None when it does not exist."""
         try:
-            self.storage.client.stat_object(
+            return self.storage.client.stat_object(
                 bucket_name=self.config.bucket_name, object_name=file_path
             )
-            return True
         except Exception as e:
             logger.debug(f"File does not exist: {file_path} - Error: {e}")
-            return False
+            return None

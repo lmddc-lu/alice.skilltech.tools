@@ -73,6 +73,46 @@ def test_unknown_file_id_removes_nothing():
     assert store.deleted_ids == []
 
 
+def test_delete_by_flat_meta_filename():
+    """Chunks whose flat meta.filename is a display name (e.g. Moodle's
+    "Course > Activity > file.pdf") never match the docling origin filename;
+    deleting by that name must still find them."""
+    delete_documents = _delete_documents()
+    docs = [
+        StubDocument(
+            meta={
+                "filename": "Course > Activity > notes.pdf",
+                "dl_meta": {"meta": {"origin": {"filename": "file_123_notes.pdf"}}},
+            },
+            id="a",
+        ),
+        StubDocument(meta={"filename": "other.pdf"}, id="b"),
+    ]
+    store = _FakeStore(docs)
+
+    result = delete_documents(store, file_names=["Course > Activity > notes.pdf"])
+
+    assert result["success"] is True
+    assert result["total_documents_removed"] == 1
+    assert store.deleted_ids == ["a"]
+
+
+def test_delete_by_flat_meta_file_name_fallback():
+    """Legacy chunks stamped only with file_name (no flat filename, no
+    dl_meta) are still matched by name."""
+    delete_documents = _delete_documents()
+    docs = [
+        StubDocument(meta={"file_name": "legacy.pdf"}, id="a"),
+        StubDocument(meta={"file_name": "keep.pdf"}, id="b"),
+    ]
+    store = _FakeStore(docs)
+
+    result = delete_documents(store, file_names=["legacy.pdf"])
+
+    assert result["total_documents_removed"] == 1
+    assert store.deleted_ids == ["a"]
+
+
 def test_delete_requires_at_least_one_selector():
     delete_documents = _delete_documents()
     result = delete_documents(_FakeStore([]))

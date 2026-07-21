@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from collections.abc import Iterator
 from pathlib import Path
@@ -5,6 +6,27 @@ from pathlib import Path
 from minio import Minio
 
 logger = logging.getLogger(__name__)
+
+
+def object_etag(obj) -> str | None:
+    """Normalized etag of a listed/statted object, or None when absent.
+
+    Some S3 implementations quote etags in listings; strip the quotes so the
+    value compares equal to the one stamped into chunk metadata at ingestion.
+    """
+    etag = getattr(obj, "etag", None)
+    if not etag:
+        return None
+    return str(etag).strip('"')
+
+
+def _file_md5(path: Path) -> str:
+    """MD5 hex digest of a file's content, for comparison with S3 etags."""
+    digest = hashlib.md5()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 class MinioStorage:
@@ -39,12 +61,18 @@ class MinioStorage:
 
             should_upload = True
             if object_name in existing_files:
+                # skip only when the content is verifiably identical: same
+                # size AND the local md5 matches the stored etag (a simple
+                # PUT's etag is the content md5). A multipart etag ("-" in
+                # it) or any mismatch uploads, so an in-place change of the
+                # same byte size still refreshes the object and its etag.
                 try:
-                    local_size = file_path.stat().st_size
-                    minio_size = self.client.stat_object(
+                    stat = self.client.stat_object(
                         bucket_name=bucket, object_name=object_name
-                    ).size
-                    if local_size == minio_size:
+                    )
+                    if file_path.stat().st_size == stat.size and object_etag(
+                        stat
+                    ) == _file_md5(file_path):
                         should_upload = False
                         logger.info(f"File unchanged, skipping: {object_name}")
                 except Exception as e:

@@ -172,11 +172,13 @@ async def update_chatbot_moodle_courses(
     }
 
     if courses_added or courses_removed:
+        # incremental: added courses are ingested; removed courses' files
+        # are deleted from the index by the worker's orphan cleanup
         success, error = await indexing_service.trigger_reindex_safe(
             session=session,
             knowledge_base_id=chatbot.knowledge_base_id,
             user=user,
-            force=True,
+            force=False,
         )
         response["reindexing"] = success
         if success:

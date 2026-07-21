@@ -23,6 +23,7 @@ from app.models.tables import (
 )
 from app.repositories.job import JobRepository, _job_age_seconds
 from app.services.datasource_service import DatasourceService
+from app.services.index_manifest import rebuild_decision
 from app.services.knowledgebase_service import KnowledgebaseService
 from app.services.messaging_service import CANCEL_EXCHANGE
 
@@ -49,10 +50,17 @@ class IndexingService:
     ) -> dict[str, Any]:
         """Prepare and publish a reindex job for a KB.
 
-        Reindex is a full sync. If the KB has Moodle datasources, their
-        metadata cache is refreshed first so the content browser tree
-        picks up new/renamed/deleted activities; ingestion then runs
-        against the freshly-cached structure.
+        A reindex is incremental by default: the worker skips files whose
+        indexed content and OCR state are unchanged (an OCR toggle is
+        detected per file via the force_ocr stamp on chunks). It escalates
+        to a forced full rebuild when the caller asks for one, or when the
+        KB's index manifest requires it (missing, or its fingerprint drifted
+        from the desired embedding config / schema version).
+
+        If the KB has Moodle datasources, their metadata cache is
+        refreshed first so the content browser tree picks up
+        new/renamed/deleted activities; ingestion then runs against the
+        freshly-cached structure.
 
         When Moodle datasources exist, ingestion is deferred behind
         their metadata sync: the prepared payload and waiting list are
@@ -87,6 +95,19 @@ class IndexingService:
 
         if needs_commit:
             session.commit()
+
+        # escalate an incremental sync to a forced rebuild when the collection
+        # cannot be trusted to match the desired config (see rebuild_decision).
+        # force_ocr needs no escalation: the worker detects an OCR flip per
+        # file via the force_ocr stamp and replaces only affected chunks.
+        if not force:
+            rebuild = rebuild_decision(kb.index_manifest if kb else None)
+            if rebuild.stale:
+                force = True
+                logger.info(
+                    f"Escalating sync of KB {knowledge_base_id} to full "
+                    f"rebuild: {rebuild.reason}"
+                )
 
         job = job_repo.create_job(
             job_type=JobType.INGESTION,

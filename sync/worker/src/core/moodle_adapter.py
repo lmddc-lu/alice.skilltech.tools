@@ -29,8 +29,22 @@ from core.source_adapter import SourceAdapter
 from core.source_types import SourceType
 from core.storage_paths import get_datasource_path
 from core.url_validation import UrlValidationError
+from storage.minio_client import object_etag
 
 logger = logging.getLogger(__name__)
+
+
+def _hash_file(path: Path) -> str:
+    """SHA-1 hex digest of a file's content.
+
+    Matches the algorithm of Moodle's contenthash so text-content hashes and
+    file hashes in the manifest read consistently.
+    """
+    digest = hashlib.sha1()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 class MoodleSourceAdapter(SourceAdapter):
@@ -650,6 +664,10 @@ class MoodleSourceAdapter(SourceAdapter):
                                         f"moodle_file_{course_id}_"
                                         f"{activity_id}_{file_id}"
                                     ),
+                                    # Moodle's contenthash from the export;
+                                    # reconcile compares it to detect in-place
+                                    # file edits without downloading
+                                    "content_hash": file_info.get("hash"),
                                 }
                                 files_downloaded += 1
                                 local_file_path.unlink()
@@ -710,6 +728,9 @@ class MoodleSourceAdapter(SourceAdapter):
                         "source_url": item["source_url"],
                         "filename": item["filename"],
                         "file_id": item.get("file_id"),
+                        # hash of the generated HTML; reconcile regenerates it
+                        # from a fresh export and compares to detect text edits
+                        "content_hash": _hash_file(item["local_path"]),
                     }
                     item["local_path"].unlink(missing_ok=True)
                 logger.info(
@@ -931,10 +952,18 @@ class MoodleSourceAdapter(SourceAdapter):
         """Return [course_selection] when storage diverges from the export.
 
         Triggers a re-download (which rebuilds the manifest and prunes stale
-        objects) when files are missing from storage OR when storage still
-        holds files that no longer exist in the course — i.e. deleted or
-        replaced upstream. Without the stale check a deletion would never be
-        reconciled, leaving the orphaned object and its citation behind.
+        objects) when:
+
+        - objects are missing from storage or storage still holds objects no
+          longer in the course (added/deleted/replaced upstream), or
+        - content changed in place: a file's export contenthash, or the hash
+          of an activity/section text regenerated from the export, no longer
+          matches what the manifest recorded at download time.
+
+        Without the content-hash checks an in-place edit keeps its object
+        name, so an incremental sync would keep serving the stale version
+        forever. Everything here works off the export response and the
+        manifest: no file is downloaded to decide.
         """
         if force:
             return [course_selection]
@@ -946,36 +975,58 @@ class MoodleSourceAdapter(SourceAdapter):
             if not course:
                 return []
 
-            expected_file_ids: set[str] = set()
-            for section in course.get("sections", []):
-                for activity in section.get("activities", []):
-                    for file_info in activity.get("files", []):
-                        expected_file_ids.add(str(file_info["id"]))
-
             domain_clean = _clean_moodle_domain(moodle_domain)
             base_path = get_datasource_path(owner_email, datasource_id)
             course_path = f"{base_path}/moodle/{domain_clean}/course_{course_id}"
+            manifest = self._load_text_content_manifest(course_path)
 
-            actual_file_ids: set[str] = set()
+            # expected basename → content hash. Files use the export's
+            # contenthash (None when an older export plugin omits it, which
+            # disables the changed-check for that file); text items are
+            # regenerated locally and hashed like _download_entire_course does.
+            expected_hashes: dict[str, str | None] = {}
+            for section in course.get("sections", []):
+                for activity in section.get("activities", []):
+                    for file_info in activity.get("files", []):
+                        basename = f"file_{file_info['id']}_{file_info['filename']}"
+                        expected_hashes[basename] = file_info.get("hash")
+            with tempfile.TemporaryDirectory() as text_temp_dir:
+                text_items = self.extract_text_content(
+                    course,
+                    Path(text_temp_dir),
+                    datasource_id,
+                    owner_email,
+                    moodle_domain,
+                )
+                for item in text_items:
+                    expected_hashes[item["storage_filename"]] = _hash_file(
+                        item["local_path"]
+                    )
+
+            actual_basenames: set[str] = set()
             try:
                 for obj in self.storage.list_objects(
                     self.config.bucket_name, course_path
                 ):
-                    obj_name = obj.object_name
-                    if "/file_" in obj_name:
-                        file_part = obj_name.split("/file_")[1]
-                        if "_" in file_part:
-                            file_id = file_part.split("_")[0]
-                            actual_file_ids.add(file_id)
+                    basename = Path(str(obj.object_name)).name
+                    if basename != "text_content_manifest.json":
+                        actual_basenames.add(basename)
             except Exception as e:
                 logger.debug(f"Error listing storage for course {course_id}: {e}")
 
-            missing = expected_file_ids - actual_file_ids
-            stale = actual_file_ids - expected_file_ids
-            if missing or stale:
+            missing = set(expected_hashes) - actual_basenames
+            stale = actual_basenames - set(expected_hashes)
+            changed = {
+                basename
+                for basename, expected_hash in expected_hashes.items()
+                if basename in actual_basenames
+                and expected_hash
+                and manifest.get(basename, {}).get("content_hash") != expected_hash
+            }
+            if missing or stale or changed:
                 logger.info(
-                    f"Course {course_id} needs reconcile: "
-                    f"{len(missing)} missing, {len(stale)} stale file(s)"
+                    f"Course {course_id} needs reconcile: {len(missing)} missing, "
+                    f"{len(stale)} stale, {len(changed)} changed object(s)"
                 )
                 return [course_selection]
             return []
@@ -1052,6 +1103,7 @@ class MoodleSourceAdapter(SourceAdapter):
                     "path": Path(obj_name),
                     "filename": obj_basename,
                     "mime_type": None,
+                    "content_etag": object_etag(obj),
                 }
 
                 if in_manifest:

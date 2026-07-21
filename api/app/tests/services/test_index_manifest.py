@@ -114,6 +114,27 @@ class TestEvaluateDrift:
         assert im.evaluate_drift(stored).stale is True
 
 
+class TestRebuildDecision:
+    def test_null_manifest_requires_rebuild(self) -> None:
+        # unlike evaluate_drift, a missing manifest must force a rebuild so
+        # the collection is guaranteed to match the config that gets stamped.
+        assert im.rebuild_decision(None).stale is True
+        assert im.rebuild_decision("").stale is True
+
+    def test_unparseable_manifest_requires_rebuild(self) -> None:
+        assert im.rebuild_decision("not json").stale is True
+        assert im.rebuild_decision('{"embedding_model": "x"}').stale is True
+
+    def test_matching_manifest_allows_incremental(self) -> None:
+        assert im.rebuild_decision(im.desired_manifest().to_json()).stale is False
+
+    def test_drifted_manifest_requires_rebuild(self) -> None:
+        stored = _manifest(embedding_model="old-model").to_json()
+        result = im.rebuild_decision(stored)
+        assert result.stale is True
+        assert "old-model" in result.reason
+
+
 class TestEnforceIndexFreshness:
     class _KB:
         id = "kb-1"

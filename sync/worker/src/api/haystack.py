@@ -127,6 +127,13 @@ class HaystackClient:
             }
             if info.get("source_url"):
                 meta["source_url"] = info["source_url"]
+            if info.get("content_etag"):
+                # stamped into every chunk; incremental syncs compare it
+                # against the storage etag to skip unchanged files
+                meta["content_etag"] = info["content_etag"]
+            # stamped so incremental syncs re-process a file when the OCR
+            # setting changed since it was indexed
+            meta["force_ocr"] = bool(force_ocr)
             file_metadata.append(meta)
 
         try:
@@ -402,6 +409,20 @@ class HaystackClient:
             data["index_name"] = index_name
 
         return self._make_request("POST", "document_management/run", json=data)
+
+    def get_index_inventory(self, index_name: str) -> dict:
+        """Per-file inventory of an index: file_id, filename, content_etag.
+
+        Backs the incremental-sync skip decision; a missing collection
+        returns an empty inventory, not an error.
+        """
+        data = {"action": "inventory", "index_name": index_name}
+        return self._make_request(
+            "POST",
+            "document_management/run",
+            json=data,
+            timeout=self.RESULT_TIMEOUT,
+        )
 
     def delete_documents(
         self,

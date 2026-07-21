@@ -89,8 +89,78 @@ class SyncStats(TypedDict):
 
     succeeded: int
     failed: int
+    skipped: int
     failed_files: list[FailedFile]
     chunks_created: int
+
+
+def _inventory_key(file_id, filename: str | None) -> str | None:
+    """Stable identity of a file in the vector index.
+
+    Prefers the rename-proof file_id; falls back to the filename for files
+    ingested without one (e.g. unenriched Moodle objects).
+    """
+    if file_id:
+        return str(file_id)
+    return filename or None
+
+
+def _should_clear_index(objects_to_sync: list[dict], datasources: list[dict]) -> bool:
+    """True when a sync with no collected files should empty the index.
+
+    Only when nothing is selected either: the user deselected everything, so
+    indexed leftovers must go or they keep surfacing as citations. An empty
+    collection WITH selections present is more likely a storage-listing
+    failure, and wiping the index on a blip would break the chatbot until the
+    next full re-ingest - leave it untouched.
+    """
+    if objects_to_sync:
+        return False
+    return not any(ds.get("selected_files") for ds in datasources)
+
+
+def _partition_by_inventory(
+    objects_to_sync: list[dict], inventory: dict[str, dict], force_ocr: bool
+) -> tuple[list[dict], set[str], list[dict]]:
+    """Split the desired files against what the index already holds.
+
+    Returns (to_ingest, keys_to_replace, skipped):
+    - skipped: indexed with a matching content_etag and matching OCR state,
+      nothing to do;
+    - keys_to_replace: indexed but changed - different content, a flipped
+      OCR setting (which changes parse output), or unverifiable stamps on
+      either side - so their stale chunks must be deleted before
+      re-ingestion;
+    - to_ingest: everything not skipped, including brand-new files.
+    """
+    to_ingest: list[dict] = []
+    skipped: list[dict] = []
+    keys_to_replace: set[str] = set()
+
+    for file_info in objects_to_sync:
+        key = _inventory_key(file_info.get("file_id"), file_info.get("filename"))
+        indexed = inventory.get(key) if key else None
+        if indexed is None:
+            to_ingest.append(file_info)
+            continue
+
+        current_etag = file_info.get("content_etag")
+        indexed_etag = indexed.get("content_etag")
+        indexed_ocr = indexed.get("force_ocr")
+        unchanged = (
+            current_etag is not None
+            and indexed_etag is not None
+            and current_etag == indexed_etag
+            and indexed_ocr is not None
+            and bool(indexed_ocr) == force_ocr
+        )
+        if unchanged:
+            skipped.append(file_info)
+        else:
+            keys_to_replace.add(key)
+            to_ingest.append(file_info)
+
+    return to_ingest, keys_to_replace, skipped
 
 
 class JobCancelledException(Exception):
@@ -434,6 +504,20 @@ class SyncWorker:
                     total_files=n_files,
                 )
 
+                # a sync with nothing selected must still empty the index, or
+                # deselected files keep serving as citations forever (a forced
+                # sync cannot clear them either: recreate_index rides on the
+                # first ingest and there is none). Deletion is the sync's
+                # entire effect here, so failures raise and fail the job.
+                if _should_clear_index(objects_to_sync, datasources):
+                    self._clear_index_leftovers(haystack_client, kb_id)
+                elif not objects_to_sync:
+                    logger.warning(
+                        f"No files collected for KB {kb_id} despite selections; "
+                        f"leaving the index untouched (possible storage "
+                        f"listing failure)"
+                    )
+
                 sync_stats = self._sync_with_hayhooks(
                     haystack_client,
                     kb_id,
@@ -446,10 +530,13 @@ class SyncWorker:
                 )
                 logger.info(f"Synced KB {kb_id} with Hayhooks: {sync_stats}")
 
-                # zero succeeded means a broken KB; fail so the user can retry. partial success still completes.
+                # zero succeeded and zero skipped means a broken KB; fail so the
+                # user can retry. partial success (or unchanged files) still
+                # completes.
                 succeeded = sync_stats["succeeded"]
                 failed = sync_stats["failed"]
-                if succeeded == 0 and failed > 0:
+                skipped = sync_stats["skipped"]
+                if succeeded == 0 and skipped == 0 and failed > 0:
                     raise Exception(
                         f"All {failed} files failed to ingest into KB {kb_id}; "
                         f"see job files for per-file errors"
@@ -461,6 +548,7 @@ class SyncWorker:
                     "files_processed": len(objects_to_sync),
                     "files_succeeded": succeeded,
                     "files_failed": failed,
+                    "files_skipped": skipped,
                     "failed_files": sync_stats["failed_files"],
                     "files_downloaded": total_downloaded,
                     "chunks_created": sync_stats["chunks_created"],
@@ -476,7 +564,7 @@ class SyncWorker:
                 CHUNKS_CREATED.inc(sync_stats["chunks_created"])
                 logger.info(
                     f"Published completion message for KB {kb_id} (job_id={job_id}): "
-                    f"{succeeded} succeeded, {failed} failed"
+                    f"{succeeded} succeeded, {failed} failed, {skipped} skipped"
                 )
 
             except JobCancelledException:
@@ -533,6 +621,11 @@ class SyncWorker:
     ) -> SyncStats:
         """Orchestrate file sync with the Hayhooks ingestion pipeline.
 
+        A forced sync recreates the collection and ingests everything. An
+        incremental sync compares the index inventory against storage etags:
+        unchanged files are skipped, changed ones replace their stale chunks,
+        and indexed files no longer selected are deleted.
+
         Per-file failures skip-and-continue; the caller decides partial
         success from the returned counts. JobCancelledException bubbles
         up to the handler.
@@ -543,6 +636,7 @@ class SyncWorker:
         stats: SyncStats = {
             "succeeded": 0,
             "failed": 0,
+            "skipped": 0,
             "failed_files": [],
             "chunks_created": 0,
         }
@@ -551,10 +645,23 @@ class SyncWorker:
             logger.info("No files to sync")
             return stats
 
+        files_to_process = objects_to_sync
+        keys_to_replace: set[str] = set()
+        if not force:
+            files_to_process, keys_to_replace = self._skip_unchanged_files(
+                client, kb_id, objects_to_sync, force_ocr, job_id, stats
+            )
+            if not files_to_process:
+                logger.info(
+                    f"All {stats['skipped']} file(s) unchanged for KB {kb_id}, "
+                    f"nothing to ingest"
+                )
+                return stats
+
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir_path = Path(temp_dir)
             files_to_ingest = self._prepare_files_for_ingestion(
-                objects_to_sync, temp_dir_path, job_id, stats
+                files_to_process, temp_dir_path, job_id, stats
             )
 
             if not files_to_ingest:
@@ -562,14 +669,159 @@ class SyncWorker:
                 return stats
 
             self._ingest_prepared_files(
-                client, files_to_ingest, kb_id, force, force_ocr, job_id, stats
+                client,
+                files_to_ingest,
+                kb_id,
+                force,
+                force_ocr,
+                job_id,
+                stats,
+                keys_to_replace,
             )
 
         logger.info(
             f"Completed sync with Hayhooks for KB {kb_name} (ID: {kb_id}): "
-            f"{stats['succeeded']} succeeded, {stats['failed']} failed"
+            f"{stats['succeeded']} succeeded, {stats['failed']} failed, "
+            f"{stats['skipped']} skipped"
         )
         return stats
+
+    def _skip_unchanged_files(
+        self,
+        client: HaystackClient,
+        kb_id: str,
+        objects_to_sync: list[dict],
+        force_ocr: bool,
+        job_id: str | None,
+        stats: SyncStats,
+    ) -> tuple[list[dict], set[str]]:
+        """Resolve the incremental-sync skip set against the index inventory.
+
+        Publishes SKIPPED for files already indexed with matching content
+        and OCR state, deletes indexed files that are no longer selected,
+        and returns (files_to_ingest, keys_to_replace) where keys_to_replace
+        identifies files whose stale chunks must be deleted before
+        re-ingestion.
+        """
+        inventory = self._fetch_index_inventory(client, kb_id)
+        to_ingest, keys_to_replace, skipped = _partition_by_inventory(
+            objects_to_sync, inventory, force_ocr
+        )
+
+        for file_info in skipped:
+            stats["skipped"] += 1
+            self._publish_file_state(
+                job_id,
+                file_id=file_info.get("file_id"),
+                filename=file_info["filename"],
+                state=JobFileState.SKIPPED,
+                error_message="Unchanged since last sync",
+            )
+
+        self._delete_index_orphans(client, kb_id, inventory, objects_to_sync)
+
+        logger.info(
+            f"Incremental sync for KB {kb_id}: {len(skipped)} unchanged file(s) "
+            f"skipped, {len(to_ingest)} to ingest "
+            f"({len(keys_to_replace)} replacing stale chunks)"
+        )
+        return to_ingest, keys_to_replace
+
+    def _fetch_index_inventory(
+        self, client: HaystackClient, kb_id: str
+    ) -> dict[str, dict]:
+        """Inventory key → entry for every file currently in the index.
+
+        Raises on failure: without the inventory an incremental sync cannot
+        tell changed files from unchanged ones, and re-ingesting a changed
+        file without deleting its old chunks would leave stale citations.
+        """
+        response = client.get_index_inventory(kb_id)
+        payload = (response or {}).get("result", response) or {}
+        if not payload.get("success", False):
+            raise Exception(
+                f"Index inventory failed for {kb_id}: "
+                f"{payload.get('error', 'unknown error')}"
+            )
+
+        inventory: dict[str, dict] = {}
+        for entry in payload.get("files", []):
+            key = _inventory_key(entry.get("file_id"), entry.get("filename"))
+            if key:
+                inventory[key] = entry
+        return inventory
+
+    def _delete_index_orphans(
+        self,
+        client: HaystackClient,
+        kb_id: str,
+        inventory: dict[str, dict],
+        objects_to_sync: list[dict],
+    ) -> None:
+        """Delete indexed files that are no longer part of the KB selection.
+
+        A forced sync clears these by recreating the collection; an
+        incremental sync must delete them explicitly or deselected/deleted
+        files keep surfacing as citations. Best-effort like upstream
+        pruning: a failure must not fail the sync.
+        """
+        desired_keys = {
+            _inventory_key(f.get("file_id"), f.get("filename")) for f in objects_to_sync
+        }
+        orphans = [entry for key, entry in inventory.items() if key not in desired_keys]
+        if not orphans:
+            return
+
+        try:
+            self._delete_indexed_entries(client, kb_id, orphans)
+        except Exception as e:
+            logger.warning(
+                f"Failed to remove {len(orphans)} no-longer-selected file(s) "
+                f"from index {kb_id}: {e}"
+            )
+
+    def _delete_indexed_entries(
+        self, client: HaystackClient, kb_id: str, entries: list[dict]
+    ) -> None:
+        """Delete the given inventory entries from the index. Raises on failure.
+
+        Matches by stable file_id where the entry carries one, by filename
+        otherwise (legacy chunks ingested without an id).
+        """
+        file_ids = [e["file_id"] for e in entries if e.get("file_id")]
+        file_names = [
+            e["filename"] for e in entries if not e.get("file_id") and e.get("filename")
+        ]
+        result = client.delete_documents(
+            file_ids=file_ids or None,
+            file_names=file_names or None,
+            index_name=kb_id,
+        )
+        payload = (result or {}).get("result", result) or {}
+        if payload.get("success") is False:
+            raise Exception(
+                f"Index delete failed for {kb_id}: "
+                f"{payload.get('error', 'unknown error')}"
+            )
+        removed = payload.get("total_documents_removed", "?")
+        logger.info(
+            f"Removed {len(entries)} no-longer-selected file(s) from index "
+            f"{kb_id}: {removed} document(s) removed"
+        )
+
+    def _clear_index_leftovers(self, client: HaystackClient, kb_id: str) -> None:
+        """Empty the index of a KB whose selection is now empty.
+
+        Raises on failure: unlike incremental orphan cleanup (a side task of
+        a sync that still ingests), here the deletion is the sync's entire
+        effect, and completing the job while stale content keeps serving
+        would hide the failure from the user.
+        """
+        inventory = self._fetch_index_inventory(client, kb_id)
+        if not inventory:
+            logger.info(f"Index {kb_id} already empty, nothing to clear")
+            return
+        self._delete_indexed_entries(client, kb_id, list(inventory.values()))
 
     def _record_file_failure(
         self,
@@ -623,6 +875,7 @@ class SyncWorker:
         file_id = file_info.get("file_id")
         mime_type = file_info.get("mime_type")
         source_url = file_info.get("source_url")
+        content_etag = file_info.get("content_etag")
 
         self._publish_file_state(
             job_id,
@@ -673,6 +926,10 @@ class SyncWorker:
             }
             if source_url:
                 ingest_entry["source_url"] = source_url
+            if content_etag:
+                # stamped into every chunk so the next incremental sync can
+                # skip the file when the storage etag still matches
+                ingest_entry["content_etag"] = content_etag
             self._publish_file_state(
                 job_id,
                 file_id=file_id,
@@ -702,12 +959,15 @@ class SyncWorker:
         force_ocr: bool,
         job_id: str | None,
         stats: SyncStats,
+        keys_to_replace: set[str],
     ) -> None:
         """Submit each prepared file to Haystack in turn.
 
         recreate_index is honored only on the first successful ingest: an
         initial failure must not silently drop the recreate and leave the
-        old index in place.
+        old index in place. keys_to_replace identifies files whose stale
+        chunks must be deleted right before their re-ingestion; each key is
+        consumed after its delete so files sharing a key delete only once.
         """
         pending_recreate = force
         total = len(files_to_ingest)
@@ -720,10 +980,33 @@ class SyncWorker:
                 force_ocr,
                 job_id,
                 stats,
+                keys_to_replace,
                 position=(idx + 1, total),
             )
             if succeeded:
                 pending_recreate = False
+
+    def _replace_stale_chunks(
+        self, client: HaystackClient, kb_id: str, file_id, filename: str
+    ) -> None:
+        """Delete a changed file's indexed chunks so re-ingestion replaces them.
+
+        Runs right before that file's ingestion (not upfront) so an earlier
+        preparation failure leaves the old version serving. Raises on
+        failure: ingesting without the delete would leave stale chunks
+        alongside the new ones.
+        """
+        result = client.delete_documents(
+            file_ids=[str(file_id)] if file_id else None,
+            file_names=[filename] if not file_id else None,
+            index_name=kb_id,
+        )
+        payload = (result or {}).get("result", result) or {}
+        removed = payload.get("total_documents_removed", "?")
+        logger.info(
+            f"Replaced stale chunks for changed file {filename} in index "
+            f"{kb_id}: {removed} document(s) removed"
+        )
 
     def _ingest_one_file(
         self,
@@ -734,6 +1017,7 @@ class SyncWorker:
         force_ocr: bool,
         job_id: str | None,
         stats: SyncStats,
+        keys_to_replace: set[str],
         *,
         position: tuple[int, int],
     ) -> bool:
@@ -754,6 +1038,30 @@ class SyncWorker:
             state=JobFileState.INGESTING,
         )
         logger.info(f"Ingesting file {idx}/{total}: {filename}")
+
+        key = _inventory_key(file_id, filename)
+        if key in keys_to_replace:
+            try:
+                self._replace_stale_chunks(client, kb_id, file_id, filename)
+            except Exception as e:
+                logger.exception(f"Stale-chunk delete failed for {filename}")
+                self._record_file_failure(
+                    stats,
+                    job_id,
+                    file_id,
+                    filename,
+                    error_detail=(
+                        f"Failed to delete stale chunks before re-ingestion: {e}\n"
+                        f"{traceback.format_exc()}"
+                    ),
+                    short_error=f"Stale-chunk delete failed: {e}",
+                    error_code=JobFileErrorCode.INGESTION_FAILED,
+                )
+                return False
+            # consume the key: when two selected files share it (same
+            # filename, no file_id) the second one's delete would wipe the
+            # chunks the first one just ingested
+            keys_to_replace.discard(key)
 
         # keep progress_updated_at ticking during slow docling runs so mark_stalled_jobs doesn't reap us
         on_haystack_progress = self._progress_publisher().haystack_tick_handler(

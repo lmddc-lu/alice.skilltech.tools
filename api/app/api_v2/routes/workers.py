@@ -335,9 +335,11 @@ async def kb_sync_complete(message: dict[str, Any], session: SessionDep) -> None
     """Handle completed knowledge base ingestion jobs."""
     files_succeeded = message.get("files_succeeded", message.get("files_processed", 0))
     files_failed = message.get("files_failed", 0)
+    files_skipped = message.get("files_skipped", 0)
     logger.info(
         f"KB ingestion completed for {message.get('knowledge_base_id')}: "
         f"{files_succeeded} succeeded, {files_failed} failed, "
+        f"{files_skipped} skipped (unchanged), "
         f"{message.get('chunks_created', 0)} chunks created"
     )
 
@@ -346,6 +348,7 @@ async def kb_sync_complete(message: dict[str, Any], session: SessionDep) -> None
         "files_processed": message.get("files_processed", 0),
         "files_succeeded": files_succeeded,
         "files_failed": files_failed,
+        "files_skipped": files_skipped,
         "failed_files": message.get("failed_files", []),
         "files_downloaded": message.get("files_downloaded", 0),
         "chunks_created": message.get("chunks_created", 0),
