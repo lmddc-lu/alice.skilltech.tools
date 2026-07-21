@@ -187,3 +187,40 @@ class TestDocMetadataOutput:
         assert result["doc_metadata"] == [{}]
         # no caller override, docling's filename is used
         assert result["docling_documents"][0].origin.filename == "legacy.pdf"
+
+
+class TestFormulaEnrichmentOption:
+    """do_formula_enrichment must reach docling-serve or formulas stay undecoded."""
+
+    def test_flag_is_included_in_async_submission_payload(
+        self, converter_cls, tmp_path
+    ):
+        source = tmp_path / "paper.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+
+        converter = converter_cls(
+            url="http://fake", timeout=1.0, do_formula_enrichment=True
+        )
+
+        captured: dict[str, dict] = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"task_id": "t-1"}
+
+        class FakeClient:
+            def post(self, _endpoint, data, files, headers):
+                captured["data"] = data
+                return FakeResponse()
+
+        task_id = converter._submit_file_async(FakeClient(), source)
+
+        assert task_id == "t-1"
+        assert captured["data"]["do_formula_enrichment"] == "true"
+
+    def test_flag_defaults_to_false_in_options(self, converter_cls):
+        converter = converter_cls(url="http://fake", timeout=1.0)
+        assert converter._build_options()["do_formula_enrichment"] is False

@@ -33,7 +33,7 @@ services:
 
 
   docling:
-    image: ghcr.io/docling-project/docling-serve:v1.26.0
+    image: ghcr.io/docling-project/docling-serve:v1.27.0
     container_name: docling
     restart: unless-stopped
     ports:
