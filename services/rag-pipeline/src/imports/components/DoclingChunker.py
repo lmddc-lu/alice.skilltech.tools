@@ -1,11 +1,44 @@
 """Haystack component wrapping docling's HybridChunker."""
 
+import threading
 from typing import Any
 
 from docling.chunking import HybridChunker
 from docling_core.types import DoclingDocument
 from haystack import Document, component
 from loguru import logger
+
+# HybridChunker loads a native HF tokenizer whose freed memory glibc never
+# returns to the OS, so building one per component instance accumulates RSS
+# (one DoclingChunker exists per cached indexing pipeline, i.e. per index).
+# Chunkers are shared process-wide per config instead. The paired lock
+# serializes chunking on the shared instance: transformers fast tokenizers
+# mutate internal truncation state on use and are not safe to call
+# concurrently from multiple threads.
+_shared_chunkers: dict[tuple[str, int, bool], tuple[HybridChunker, threading.Lock]] = {}
+_shared_chunkers_lock = threading.Lock()
+
+
+def _get_shared_chunker(
+    tokenizer: str, max_tokens: int, merge_peers: bool
+) -> tuple[HybridChunker, threading.Lock]:
+    key = (tokenizer, max_tokens, merge_peers)
+    with _shared_chunkers_lock:
+        entry = _shared_chunkers.get(key)
+        if entry is None:
+            logger.info(
+                f"Initializing HybridChunker with tokenizer={tokenizer}, max_tokens={max_tokens}"
+            )
+            entry = (
+                HybridChunker(
+                    tokenizer=tokenizer,
+                    max_tokens=max_tokens,
+                    merge_peers=merge_peers,
+                ),
+                threading.Lock(),
+            )
+            _shared_chunkers[key] = entry
+        return entry
 
 
 @component
@@ -27,16 +60,12 @@ class DoclingChunker:
         self.max_tokens = max_tokens
         self.merge_peers = merge_peers
         self._chunker = None
+        self._chunk_lock = threading.Lock()
 
     def _get_chunker(self) -> HybridChunker:
         if self._chunker is None:
-            logger.info(
-                f"Initializing HybridChunker with tokenizer={self.tokenizer}, max_tokens={self.max_tokens}"
-            )
-            self._chunker = HybridChunker(
-                tokenizer=self.tokenizer,
-                max_tokens=self.max_tokens,
-                merge_peers=self.merge_peers,
+            self._chunker, self._chunk_lock = _get_shared_chunker(
+                self.tokenizer, self.max_tokens, self.merge_peers
             )
         return self._chunker
 
@@ -56,6 +85,23 @@ class DoclingChunker:
         documents = []
         meta = meta or {}
         chunker = self._get_chunker()
+
+        with self._chunk_lock:
+            documents = self._chunk_documents(
+                chunker, docling_documents, meta, doc_metadata
+            )
+
+        logger.info(f"Total chunks created: {len(documents)}")
+        return {"documents": documents}
+
+    def _chunk_documents(
+        self,
+        chunker: HybridChunker,
+        docling_documents: list[DoclingDocument],
+        meta: dict[str, Any],
+        doc_metadata: list[dict[str, Any]] | None,
+    ) -> list[Document]:
+        documents: list[Document] = []
 
         for doc_index, docling_doc in enumerate(docling_documents):
             try:
@@ -107,5 +153,4 @@ class DoclingChunker:
                 logger.error(f"Error chunking document: {e}")
                 continue
 
-        logger.info(f"Total chunks created: {len(documents)}")
-        return {"documents": documents}
+        return documents

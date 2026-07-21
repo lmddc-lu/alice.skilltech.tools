@@ -1,3 +1,4 @@
+import threading
 import time
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -39,6 +40,14 @@ class RAGPipelineWrapper(BasePipelineWrapper):
     def setup(self) -> None:
         self._default_index = QDRANT_INDEX
 
+        # Building a pipeline per request allocates Qdrant/OpenAI clients whose
+        # freed memory glibc never returns to the OS, so worker RSS grows with
+        # query volume. Pipelines are cached per config and reused; runs on a
+        # shared pipeline are safe because streaming callbacks and top_k are
+        # passed as per-run arguments, never set on components.
+        self._pipelines = {}
+        self._pipelines_lock = threading.Lock()
+
         # Dedicated generator for query rewriting. Temperature 0 and thinking
         # off keep the rewrite deterministic and fast; it must emit only the
         # query text so it can be embedded directly.
@@ -72,11 +81,17 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         logger.info(f"Session storage enabled: {SESSION_STORAGE_ENABLED}")
 
     def _get_pipeline(self, index_name: str = None, embedding_config=None):
-        """Build a per-request pipeline. Returns (pipeline, use_sparse) so the
-        caller can shape pipeline inputs to match the collection's retriever.
+        """Return a cached pipeline for this config, building it on first use.
+        Returns (pipeline, use_sparse) so the caller can shape pipeline inputs
+        to match the collection's retriever.
 
         ``embedding_config`` is the API-dictated config (dict or JSON string);
         it falls back to this service's env when absent.
+
+        Sparse-ness is re-resolved against Qdrant on every call and is part of
+        the cache key: when a reindex flips a collection between dense and
+        sparse, the next query builds a fresh pipeline against the new
+        collection instead of reusing a stale one.
         """
         name = index_name or self._default_index
         cfg = resolve_embedding_config(embedding_config)
@@ -85,15 +100,20 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         use_sparse = resolve_sparse_for_index(
             name, desired_sparse=bool(cfg["sparse_model"])
         )
-        document_store = create_document_store(
-            name, use_sparse=use_sparse, embedding_dim=cfg["dim"]
-        )
-        pipeline = create_rag_pipeline(
-            document_store,
-            self.session_manager,
-            embed_model=cfg["model"],
-            sparse_model=cfg["sparse_model"],
-        )
+        key = (name, cfg["model"], cfg["sparse_model"], cfg["dim"], use_sparse)
+        with self._pipelines_lock:
+            pipeline = self._pipelines.get(key)
+            if pipeline is None:
+                document_store = create_document_store(
+                    name, use_sparse=use_sparse, embedding_dim=cfg["dim"]
+                )
+                pipeline = create_rag_pipeline(
+                    document_store,
+                    self.session_manager,
+                    embed_model=cfg["model"],
+                    sparse_model=cfg["sparse_model"],
+                )
+                self._pipelines[key] = pipeline
         return pipeline, use_sparse
 
     def _convert_history_to_messages(
@@ -157,12 +177,15 @@ class RAGPipelineWrapper(BasePipelineWrapper):
         cite_sources: bool = True,
         use_sparse: bool = False,
         retrieval_query: str | None = None,
+        top_k: int | None = None,
     ) -> dict[str, Any]:
         # The prompt sees the user's real question; the embedder sees the
         # (possibly rewritten) retrieval query. They diverge only when
         # contextualization is on.
         search_text = retrieval_query if retrieval_query is not None else question
 
+        # top_k travels as a run argument: the pipeline is shared across
+        # requests, so the retriever component must never be mutated.
         pipeline_inputs = {
             "prompt_builder": {
                 "query": question,
@@ -170,6 +193,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                 "cite_sources": cite_sources,
             },
             "redis_storage": {"session_id": session_id},
+            "retriever": {"top_k": top_k if top_k is not None else TOP_K},
         }
 
         if system_prompt is not None:
@@ -224,10 +248,6 @@ class RAGPipelineWrapper(BasePipelineWrapper):
 
             pipeline, use_sparse = self._get_pipeline(index_name, embedding_config)
 
-            retriever = pipeline.get_component("retriever")
-            if hasattr(retriever, "top_k") and retriever.top_k != top_k:
-                retriever.top_k = top_k
-
             chat_messages = self._convert_history_to_messages(conversation_history)
             pipeline_inputs = self._prepare_pipeline_inputs(
                 question,
@@ -238,6 +258,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                 cite_sources,
                 use_sparse=use_sparse,
                 retrieval_query=retrieval_query,
+                top_k=top_k,
             )
 
             return async_streaming_generator(
@@ -283,10 +304,6 @@ class RAGPipelineWrapper(BasePipelineWrapper):
 
             pipeline, use_sparse = self._get_pipeline(index_name, embedding_config)
 
-            retriever = pipeline.get_component("retriever")
-            if hasattr(retriever, "top_k") and retriever.top_k != top_k:
-                retriever.top_k = top_k
-
             chat_messages = self._convert_history_to_messages(conversation_history)
             pipeline_inputs = self._prepare_pipeline_inputs(
                 question,
@@ -296,6 +313,7 @@ class RAGPipelineWrapper(BasePipelineWrapper):
                 cite_sources=cite_sources,
                 use_sparse=use_sparse,
                 retrieval_query=retrieval_query,
+                top_k=top_k,
             )
 
             result = await pipeline.run_async(
